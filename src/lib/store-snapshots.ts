@@ -1,0 +1,249 @@
+import { BaseDirectory, exists, mkdir, readDir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs'
+import { isTauri } from '@tauri-apps/api/core'
+import {
+    BACKUP_STORE_KEYS,
+    flushAllPendingWrites,
+    importAllData,
+    indexedDBStorage,
+    registerIndexedDBWriteListener,
+    type BackupStoreKey,
+} from '@/lib/indexed-db'
+
+const BACKUP_ROOT = 'NAIS_Backup'
+const DEBOUNCE_MS = 5000
+const MAX_SNAPSHOTS_PER_STORE = 30
+const STORE_SNAPSHOT_VERSION = 'store-snapshot/1'
+
+export interface StoreSnapshotEntry {
+    storeKey: BackupStoreKey
+    fileName: string
+    relPath: string
+    timestamp: string
+    exportedAt?: string
+}
+
+export interface StoreSnapshotGroup {
+    storeKey: BackupStoreKey
+    entries: StoreSnapshotEntry[]
+}
+
+const encoder = new TextEncoder()
+const decoder = new TextDecoder()
+const timers = new Map<BackupStoreKey, ReturnType<typeof setTimeout>>()
+const inflight = new Set<BackupStoreKey>()
+const pendingAfterInflight = new Set<BackupStoreKey>()
+
+let stopScheduler: (() => void) | null = null
+
+function isBackupStoreKey(key: string): key is BackupStoreKey {
+    return (BACKUP_STORE_KEYS as readonly string[]).includes(key)
+}
+
+function tsStamp(d = new Date()): string {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+}
+
+export function formatStoreSnapshotTimestamp(timestamp: string): string {
+    if (timestamp.length < 15) return timestamp
+    return `${timestamp.slice(0, 4)}-${timestamp.slice(4, 6)}-${timestamp.slice(6, 8)} ${timestamp.slice(9, 11)}:${timestamp.slice(11, 13)}:${timestamp.slice(13, 15)}`
+}
+
+function storeSnapshotDir(storeKey: BackupStoreKey): string {
+    return `${BACKUP_ROOT}/${storeKey}`
+}
+
+async function ensureStoreSnapshotDir(storeKey: BackupStoreKey): Promise<void> {
+    if (!(await exists(BACKUP_ROOT, { baseDir: BaseDirectory.Picture }))) {
+        await mkdir(BACKUP_ROOT, { baseDir: BaseDirectory.Picture, recursive: true })
+    }
+
+    const dirRel = storeSnapshotDir(storeKey)
+    if (!(await exists(dirRel, { baseDir: BaseDirectory.Picture }))) {
+        await mkdir(dirRel, { baseDir: BaseDirectory.Picture, recursive: true })
+    }
+}
+
+function parseStoreSnapshotEntry(storeKey: BackupStoreKey, fileName: string): StoreSnapshotEntry | null {
+    if (!fileName.startsWith(`${storeKey}_`) || !fileName.endsWith('.json')) {
+        return null
+    }
+
+    const timestamp = fileName.slice(storeKey.length + 1, -5)
+    return {
+        storeKey,
+        fileName,
+        relPath: `${storeSnapshotDir(storeKey)}/${fileName}`,
+        timestamp,
+    }
+}
+
+async function rotateStoreSnapshots(storeKey: BackupStoreKey): Promise<void> {
+    const entries = await listStoreSnapshotEntries(storeKey)
+    for (const entry of entries.slice(MAX_SNAPSHOTS_PER_STORE)) {
+        try {
+            await remove(entry.relPath, { baseDir: BaseDirectory.Picture })
+        } catch (error) {
+            console.warn('[StoreSnapshot] Failed to remove old snapshot:', entry.fileName, error)
+        }
+    }
+}
+
+async function listStoreSnapshotEntries(storeKey: BackupStoreKey): Promise<StoreSnapshotEntry[]> {
+    const dirRel = storeSnapshotDir(storeKey)
+    if (!(await exists(dirRel, { baseDir: BaseDirectory.Picture }))) return []
+
+    const entries = await readDir(dirRel, { baseDir: BaseDirectory.Picture })
+    return entries
+        .map((entry) => entry.name ? parseStoreSnapshotEntry(storeKey, entry.name) : null)
+        .filter((entry): entry is StoreSnapshotEntry => entry !== null)
+        .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1))
+}
+
+async function writeStoreSnapshot(storeKey: BackupStoreKey): Promise<StoreSnapshotEntry | null> {
+    await flushAllPendingWrites()
+
+    const raw = await indexedDBStorage.getItem(storeKey)
+    if (!raw) return null
+
+    let persistPayload: unknown
+    try {
+        persistPayload = JSON.parse(raw)
+    } catch (error) {
+        console.warn(`[StoreSnapshot] ${storeKey} contains invalid JSON, skipping snapshot`, error)
+        return null
+    }
+
+    await ensureStoreSnapshotDir(storeKey)
+
+    const exportedAt = new Date().toISOString()
+    const backup = {
+        _exportedAt: exportedAt,
+        _version: STORE_SNAPSHOT_VERSION,
+        _kind: 'store-snapshot',
+        _storeKey: storeKey,
+        [storeKey]: persistPayload,
+    }
+    const timestamp = tsStamp()
+    const fileName = `${storeKey}_${timestamp}.json`
+    const relPath = `${storeSnapshotDir(storeKey)}/${fileName}`
+
+    await writeFile(relPath, encoder.encode(JSON.stringify(backup, null, 2)), { baseDir: BaseDirectory.Picture })
+    await rotateStoreSnapshots(storeKey)
+
+    return { storeKey, fileName, relPath, timestamp, exportedAt }
+}
+
+function scheduleStoreSnapshot(storeKey: BackupStoreKey): void {
+    const existing = timers.get(storeKey)
+    if (existing) clearTimeout(existing)
+
+    const timer = setTimeout(() => {
+        timers.delete(storeKey)
+        void flushStoreSnapshot(storeKey)
+    }, DEBOUNCE_MS)
+
+    timers.set(storeKey, timer)
+}
+
+export async function flushStoreSnapshot(storeKey: BackupStoreKey): Promise<StoreSnapshotEntry | null> {
+    const existing = timers.get(storeKey)
+    if (existing) {
+        clearTimeout(existing)
+        timers.delete(storeKey)
+    }
+
+    if (inflight.has(storeKey)) {
+        pendingAfterInflight.add(storeKey)
+        return null
+    }
+
+    inflight.add(storeKey)
+    try {
+        return await writeStoreSnapshot(storeKey)
+    } catch (error) {
+        console.error(`[StoreSnapshot] ${storeKey} snapshot failed:`, error)
+        return null
+    } finally {
+        inflight.delete(storeKey)
+        if (pendingAfterInflight.delete(storeKey)) {
+            scheduleStoreSnapshot(storeKey)
+        }
+    }
+}
+
+export function startStoreSnapshotScheduler(): () => void {
+    if (stopScheduler) return stopScheduler
+    if (!isTauri()) return () => {}
+
+    const unregister = registerIndexedDBWriteListener((key) => {
+        if (isBackupStoreKey(key)) {
+            scheduleStoreSnapshot(key)
+        }
+    })
+
+    const flushPendingTimers = () => {
+        for (const storeKey of timers.keys()) {
+            void flushStoreSnapshot(storeKey)
+        }
+    }
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('beforeunload', flushPendingTimers)
+    }
+
+    stopScheduler = () => {
+        unregister()
+        if (typeof window !== 'undefined') {
+            window.removeEventListener('beforeunload', flushPendingTimers)
+        }
+        for (const timer of timers.values()) {
+            clearTimeout(timer)
+        }
+        timers.clear()
+        stopScheduler = null
+    }
+
+    return stopScheduler
+}
+
+export async function listStoreSnapshots(): Promise<StoreSnapshotGroup[]> {
+    if (!isTauri()) return []
+
+    const groups: StoreSnapshotGroup[] = []
+    for (const storeKey of BACKUP_STORE_KEYS) {
+        try {
+            const entries = await listStoreSnapshotEntries(storeKey)
+            if (entries.length > 0) {
+                groups.push({ storeKey, entries })
+            }
+        } catch (error) {
+            console.warn(`[StoreSnapshot] Failed to list ${storeKey}:`, error)
+        }
+    }
+
+    return groups
+}
+
+export async function restoreStoreSnapshot(
+    storeKey: BackupStoreKey,
+    fileRelPath: string,
+): Promise<{ success: string[]; failed: string[] }> {
+    if (!isTauri()) {
+        throw new Error('Store snapshot restore is only available in the Tauri app.')
+    }
+
+    const bytes = await readFile(fileRelPath, { baseDir: BaseDirectory.Picture })
+    const backup = JSON.parse(decoder.decode(bytes)) as Record<string, unknown>
+    if (!backup._exportedAt || !backup._version || !(storeKey in backup)) {
+        throw new Error('Store snapshot is missing NAIS2 export metadata or store payload.')
+    }
+
+    const result = await importAllData({
+        _exportedAt: backup._exportedAt,
+        _version: backup._version,
+        [storeKey]: backup[storeKey],
+    }, true)
+    await flushAllPendingWrites()
+    return result
+}
