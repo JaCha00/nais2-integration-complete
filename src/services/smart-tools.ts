@@ -2,6 +2,17 @@
 import { Client } from "@gradio/client";
 import { augmentImage, upscaleImage } from '@/services/novelai-api'
 
+const KALOSCOPE_SPACE = "DraconicDragon/Kaloscope-artist-style-classifier"
+const KALOSCOPE_ENDPOINT = "/predict"
+const KALOSCOPE_PAYLOAD_DEFAULTS = {
+    model_selection: "Kaloscope v2.0 ONNX",
+    top_k: 5,
+    threshold: 0,
+} as const
+
+const BRIA_SPACE = "briaai/BRIA-RMBG-2.0"
+const ANIME_RMBG_SPACE = "skytnt/anime-remove-background"
+
 export interface TagResult {
     label: string
     score: number
@@ -31,10 +42,11 @@ class SmartToolsService {
             const blob = await response.blob();
 
             console.log("SmartTools: Connecting to Kaloscope API...");
-            const client = await Client.connect("DraconicDragon/Kaloscope-artist-style-classifier");
+            const client = await Client.connect(KALOSCOPE_SPACE);
 
-            const result = await client.predict("/predict", {
-                image: blob
+            const result = await client.predict(KALOSCOPE_ENDPOINT, {
+                image: blob,
+                ...KALOSCOPE_PAYLOAD_DEFAULTS,
             });
 
             console.log("Kaloscope raw result:", result);
@@ -59,9 +71,10 @@ class SmartToolsService {
 
             console.warn("Kaloscope: Unexpected result format", rawData);
             return [];
-        } catch (e) {
-            console.error("Kaloscope API Error:", e);
-            throw new Error("Failed to connect to Kaloscope API. Internet connection required.");
+        } catch (error) {
+            const message = this.getErrorMessage(error);
+            console.error("Kaloscope API Error:", error);
+            throw new Error(`Kaloscope API 연결 실패: ${message}`);
         }
     }
 
@@ -75,42 +88,49 @@ class SmartToolsService {
     ): Promise<string> {
         const response = await fetch(imageUrl);
         const blob = await response.blob();
+        const failureReasons: string[] = [];
 
         // Step 1: Try BRIA-RMBG-2.0 (best quality)
         try {
             console.log("SmartTools: Trying briaai/BRIA-RMBG-2.0...");
-            const client = await Client.connect("briaai/BRIA-RMBG-2.0");
+            const client = await Client.connect(BRIA_SPACE);
             const result = await client.predict("/image", { image: blob });
 
-            const outputData = (result.data as any[])?.[0]?.[0] || (result.data as any[])?.[1];
-            if (outputData) {
-                return await this.processGradioOutput(outputData);
+            const outputData = this.selectBriaBackgroundOutput(result.data);
+            if (!outputData) {
+                throw new Error("BRIA-RMBG-2.0 returned no processed image");
             }
-        } catch (e: any) {
-            console.warn("BRIA-RMBG-2.0 failed:", e?.message);
+            return await this.processGradioOutput(outputData);
+        } catch (error) {
+            const message = this.getErrorMessage(error);
+            failureReasons.push(`BRIA-RMBG-2.0: ${message}`);
+            console.warn("BRIA-RMBG-2.0 failed:", message);
         }
 
         // Step 2: Fallback skytnt/anime-remove-background
         try {
             console.log("SmartTools: Trying skytnt/anime-remove-background...");
-            const client = await Client.connect("skytnt/anime-remove-background");
+            const client = await Client.connect(ANIME_RMBG_SPACE);
             const result = await client.predict("/rmbg_fn", { img: blob });
 
-            const outputData = (result.data as any[])?.[0];
-            if (outputData) {
-                return await this.processGradioOutput(outputData);
+            const outputData = this.selectAnimeBackgroundOutput(result.data);
+            if (!outputData) {
+                throw new Error("anime-remove-background returned no result image");
             }
-        } catch (e: any) {
-            console.warn("anime-remove-background failed:", e?.message);
+            return await this.processGradioOutput(outputData);
+        } catch (error) {
+            const message = this.getErrorMessage(error);
+            failureReasons.push(`anime-remove-background: ${message}`);
+            console.warn("anime-remove-background failed:", message);
         }
 
-        throw new Error("모든 배경 제거 서비스 연결 실패. 잠시 후 다시 시도해주세요.");
+        throw new Error(`모든 배경 제거 서비스 연결 실패: ${failureReasons.join(' / ')}`);
     }
 
     /**
      * Process Gradio output (URL, path, or data URL)
      */
-    private async processGradioOutput(outputData: any): Promise<string> {
+    private async processGradioOutput(outputData: unknown): Promise<string> {
         if (typeof outputData === 'string') {
             if (outputData.startsWith('http')) {
                 const imgResponse = await fetch(outputData);
@@ -120,12 +140,47 @@ class SmartToolsService {
             if (outputData.startsWith('data:')) {
                 return outputData;
             }
-        } else if (outputData.url) {
-            const imgResponse = await fetch(outputData.url);
-            const imgBlob = await imgResponse.blob();
-            return await this.blobToDataUrl(imgBlob);
+        } else if (typeof outputData === 'object' && outputData !== null) {
+            const fileData = outputData as { url?: unknown; path?: unknown };
+            const outputUrl = typeof fileData.url === 'string'
+                ? fileData.url
+                : typeof fileData.path === 'string'
+                    ? fileData.path
+                    : undefined;
+
+            if (outputUrl) {
+                return await this.processGradioOutput(outputUrl);
+            }
         }
         throw new Error("Invalid output format");
+    }
+
+    private selectBriaBackgroundOutput(data: unknown): unknown {
+        if (!Array.isArray(data)) {
+            return undefined;
+        }
+
+        // BRIA returns [image slider tuple, output file]; the file is the actual transparent PNG.
+        const fileOutput = data[1];
+        if (fileOutput) {
+            return fileOutput;
+        }
+
+        const imageSliderOutput = data[0];
+        return Array.isArray(imageSliderOutput) ? imageSliderOutput[1] : undefined;
+    }
+
+    private selectAnimeBackgroundOutput(data: unknown): unknown {
+        if (!Array.isArray(data)) {
+            return undefined;
+        }
+
+        // skytnt returns [mask image, result image]; the second slot is the removed-background image.
+        return data[1];
+    }
+
+    private getErrorMessage(error: unknown): string {
+        return error instanceof Error ? error.message : String(error);
     }
 
     /**

@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "test:smart-tools": "node scripts/test-smart-tools-contract.mjs",
     "tauri": "npx tauri",
     "tauri:dev": "npx tauri dev",
     "tauri:build": "npx tauri build",
