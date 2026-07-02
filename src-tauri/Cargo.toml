@@ -6,7 +6,7 @@ authors = ["sunakgo"]
 license = "GPL-3.0"
 repository = "https://github.com/sunakgo/NAIS2"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.88.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -41,3 +41,9 @@ base64 = "0.22"
 # and the "deep-link" feature integrates with our nais2:// callback handler.
 [target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+
+[patch.crates-io]
+# Tauri 2.11 still pulls plist 1.9.0, whose published crate depends on
+# vulnerable quick-xml 0.39.x. The local plist copy is source-identical except
+# for the quick-xml 0.41.x floor documented in vendor/plist/NAIS_PATCH.md.
+plist = { path = "vendor/plist" }
