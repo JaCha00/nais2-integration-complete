@@ -27,6 +27,7 @@ export const BACKUP_STORE_KEYS = [
     'nais2-tools',
     'nais2-update',
     'nais2-style-lab',
+    'nais2-asset-modules',
 ] as const
 
 export type BackupStoreKey = typeof BACKUP_STORE_KEYS[number]
@@ -272,7 +273,7 @@ async function installTauriCloseFlushHandler(): Promise<void> {
     tauriCloseFlushInstalled = true
 
     try {
-        const [{ isTauri }, { getCurrentWindow }] = await Promise.all([
+        const [{ invoke, isTauri }, { getCurrentWindow }] = await Promise.all([
             import('@tauri-apps/api/core'),
             import('@tauri-apps/api/window'),
         ])
@@ -293,8 +294,11 @@ async function installTauriCloseFlushHandler(): Promise<void> {
             } finally {
                 tauriCloseFlushCompleted = true
                 tauriCloseFlushInProgress = false
-                await appWindow.close().catch((error) => {
-                    console.warn('[IndexedDB] Failed to close after flush:', error)
+                await invoke('exit_app').catch(async (error) => {
+                    console.warn('[IndexedDB] Failed to exit after close flush:', error)
+                    await appWindow.close().catch((closeError) => {
+                        console.warn('[IndexedDB] Fallback close failed:', closeError)
+                    })
                 })
             }
         })

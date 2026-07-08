@@ -43,7 +43,7 @@ async fn verify_token(token: String) -> VerifyTokenResult {
     };
 
     let result = client
-        .get("https://api.novelai.net/user/subscription")
+        .get("https://image.novelai.net/user/subscription")
         .header("Authorization", format!("Bearer {}", clean_token))
         .header("Content-Type", "application/json")
         .send()
@@ -112,7 +112,7 @@ async fn get_anlas_balance(token: String) -> AnlasResult {
     let client = reqwest::Client::new();
 
     let result = client
-        .get("https://api.novelai.net/user/subscription")
+        .get("https://image.novelai.net/user/subscription")
         .header("Authorization", format!("Bearer {}", token.trim()))
         .header("Content-Type", "application/json")
         .send()
@@ -560,6 +560,11 @@ async fn zoom_embedded_browser(app: AppHandle, zoom_level: f64) -> Result<(), St
 }
 
 #[tauri::command]
+fn exit_app(app: AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
 async fn check_tagger_binary() -> bool {
     true
 }
@@ -634,6 +639,7 @@ pub fn run() {
             hide_embedded_browser,
             is_browser_open,
             zoom_embedded_browser,
+            exit_app,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

@@ -9,7 +9,6 @@ import { CustomTitleBar } from './CustomTitleBar'
 import { PresetDropdown } from '@/components/preset/PresetDropdown'
 import { useAuthStore } from '@/stores/auth-store'
 import { SHORTCUT_EVENTS } from '@/hooks/useShortcuts'
-import GlassSurface from '@/components/ui/GlassSurface'
 import { Tip } from '@/components/ui/tooltip'
 import {
     Sheet,
@@ -31,6 +30,7 @@ import {
     PanelLeft,
     PanelRight,
     Store,
+    Package,
 } from 'lucide-react'
 
 interface ThreeColumnLayoutProps {
@@ -46,6 +46,21 @@ import { useLayoutStore } from '@/stores/layout-store'
 const isMac = navigator.platform.toUpperCase().includes('MAC') ||
     navigator.userAgent.toUpperCase().includes('MAC')
 
+function useMediaQuery(query: string) {
+    const [matches, setMatches] = useState(() => window.matchMedia(query).matches)
+
+    useEffect(() => {
+        const mediaQuery = window.matchMedia(query)
+        const syncMatches = () => setMatches(mediaQuery.matches)
+
+        syncMatches()
+        mediaQuery.addEventListener('change', syncMatches)
+        return () => mediaQuery.removeEventListener('change', syncMatches)
+    }, [query])
+
+    return matches
+}
+
 export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     const { t } = useTranslation()
     const location = useLocation()
@@ -53,7 +68,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     const { leftSidebarVisible, rightSidebarVisible, toggleLeftSidebar, toggleRightSidebar } = useLayoutStore()
     const [leftSheetOpen, setLeftSheetOpen] = useState(false)
     const [rightSheetOpen, setRightSheetOpen] = useState(false)
-    const [isDesktopShell, setIsDesktopShell] = useState(() => window.innerWidth >= 1536)
+    const isDesktopShell = useMediaQuery('(min-width: 1536px)')
 
     // Get generation params for cost calculation
     const { characterImages, vibeImages } = useCharacterStore()
@@ -64,14 +79,6 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
 
     // Preset dialog state (for shortcut support)
     const [presetDialogOpen, setPresetDialogOpen] = useState(false)
-
-    useEffect(() => {
-        const syncShellMode = () => setIsDesktopShell(window.innerWidth >= 1536)
-
-        syncShellMode()
-        window.addEventListener('resize', syncShellMode)
-        return () => window.removeEventListener('resize', syncShellMode)
-    }, [])
 
     // 프리셋 다이얼로그 단축키 이벤트 수신
     useEffect(() => {
@@ -116,6 +123,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
         { path: '/scenes', icon: Film, labelKey: 'nav.scenes' },
         { path: '/tools', icon: Wand2, labelKey: 'smartTools.title' },
         { path: '/prompts', icon: NotebookPen, labelKey: 'nav.promptEditor' },
+        { path: '/asset-modules', icon: Package, labelKey: 'nav.assetModuleStudio', fallbackLabel: 'Asset Studio' },
         { path: '/style-lab', icon: FlaskConical, labelKey: 'nav.styleLab' },
         { path: '/marketplace', icon: Store, labelKey: 'nav.marketplace' },
         { path: '/web', icon: Globe, labelKey: 'nav.web' },
@@ -262,17 +270,9 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                             </button>
                         </Tip>
                         <div className="min-w-0 flex-1">
-                        <GlassSurface
-                            width="100%"
-                            height={48}
-                            borderRadius={30}
-                            opacity={0.6}
-                            blur={15}
-                            borderWidth={0.5}
-                            className="flex min-w-0 items-center px-1 sm:px-2"
-                        >
-                            <AnimatedNavBar items={navItems} />
-                        </GlassSurface>
+                            <div className="flex h-12 min-w-0 items-center rounded-full border border-border/50 bg-card/50 px-1 sm:px-2">
+                                <AnimatedNavBar items={navItems} />
+                            </div>
                         </div>
                         <Tip content={t('layout.toggleRightSidebar', 'Toggle Right Sidebar')}>
                             <button

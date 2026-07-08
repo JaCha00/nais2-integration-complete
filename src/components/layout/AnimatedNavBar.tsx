@@ -9,6 +9,7 @@ interface NavItem {
     path: string
     icon: LucideIcon
     labelKey: string
+    fallbackLabel?: string
 }
 
 interface AnimatedNavBarProps {
@@ -19,31 +20,54 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
     const { t } = useTranslation()
     const location = useLocation()
     const navRef = useRef<HTMLElement>(null)
-    const [isCompact, setIsCompact] = useState(true)
-    const [isTiny, setIsTiny] = useState(() => window.innerWidth < 480)
+    const [{ isCompact, isTiny }, setNavigationMode] = useState(() => ({
+        isCompact: true,
+        isTiny: window.innerWidth < 480,
+    }))
 
     useEffect(() => {
         const node = navRef.current
         const measuredNode = node?.parentElement ?? node
+        let rafId = 0
 
         const syncNavigationMode = () => {
-            const availableWidth = measuredNode?.getBoundingClientRect().width ?? window.innerWidth
-            setIsCompact(window.innerWidth < 1382 || availableWidth < 760)
-            setIsTiny(availableWidth < 320 || window.innerWidth < 480)
+            if (rafId) {
+                cancelAnimationFrame(rafId)
+            }
+
+            rafId = requestAnimationFrame(() => {
+                const availableWidth = measuredNode?.getBoundingClientRect().width ?? window.innerWidth
+                const nextMode = {
+                    isCompact: window.innerWidth < 1382 || availableWidth < 760,
+                    isTiny: availableWidth < 320 || window.innerWidth < 480,
+                }
+
+                setNavigationMode(previous => (
+                    previous.isCompact === nextMode.isCompact && previous.isTiny === nextMode.isTiny
+                        ? previous
+                        : nextMode
+                ))
+            })
         }
 
         syncNavigationMode()
-        window.addEventListener('resize', syncNavigationMode)
 
         const observer = typeof ResizeObserver !== 'undefined' && measuredNode
             ? new ResizeObserver(syncNavigationMode)
             : null
         if (observer && measuredNode) {
             observer.observe(measuredNode)
+        } else {
+            window.addEventListener('resize', syncNavigationMode)
         }
 
         return () => {
-            window.removeEventListener('resize', syncNavigationMode)
+            if (rafId) {
+                cancelAnimationFrame(rafId)
+            }
+            if (!observer) {
+                window.removeEventListener('resize', syncNavigationMode)
+            }
             observer?.disconnect()
         }
     }, [])
@@ -52,11 +76,12 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
         <nav ref={navRef} className="flex w-full min-w-0 items-center justify-center gap-1 overflow-x-auto p-1">
             {items.map((item) => {
                 const isActive = location.pathname === item.path
+                const label = t(item.labelKey, item.fallbackLabel ?? item.labelKey)
                 return (
                     <NavLink
                         key={item.path}
                         to={item.path}
-                        title={isCompact ? t(item.labelKey) : undefined}
+                        title={isCompact ? label : undefined}
                         className={cn(
                             "relative z-0 shrink-0 rounded-full text-sm font-medium transition-colors",
                             isCompact ? (isTiny ? "p-1.5" : "p-2") : "px-4 py-2",
@@ -74,7 +99,7 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
                         )}
                         <span className="relative z-10 flex min-w-0 items-center gap-2">
                             <item.icon className="h-4 w-4 shrink-0" />
-                            {!isCompact && <span className="truncate">{t(item.labelKey)}</span>}
+                            {!isCompact && <span className="truncate">{label}</span>}
                         </span>
                     </NavLink>
                 )

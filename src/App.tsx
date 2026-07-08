@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { useSceneGeneration } from '@/hooks/useSceneGeneration'
 import { useUpdateChecker } from '@/hooks/useUpdateChecker'
 import { useShortcuts } from '@/hooks/useShortcuts'
+import { useWindowResizePerformanceMode } from '@/hooks/useWindowResizePerformanceMode'
 import MainMode from '@/pages/MainMode'
 import { useMarketAuthStore } from '@/stores/market-auth-store'
 
@@ -16,6 +17,7 @@ const Library = lazy(() => import('@/pages/Library'))
 const Settings = lazy(() => import('@/pages/Settings'))
 const ToolsMode = lazy(() => import('@/pages/ToolsMode'))
 const PromptEditor = lazy(() => import('@/pages/PromptEditor'))
+const AssetModuleStudio = lazy(() => import('@/pages/AssetModuleStudio'))
 const StyleLab = lazy(() => import('@/pages/StyleLab'))
 const Marketplace = lazy(() => import('@/pages/Marketplace'))
 const MarketplaceDetail = lazy(() => import('@/pages/MarketplaceDetail'))
@@ -33,6 +35,7 @@ function AppContent() {
     useSceneGeneration()
     useUpdateChecker()
     useShortcuts()
+    useWindowResizePerformanceMode()
 
     // Initialize marketplace auth on app mount
     const initMarketAuth = useMarketAuthStore(s => s.init)
@@ -67,6 +70,7 @@ function AppContent() {
                     <Route path="/scenes/:id" element={<SceneDetail />} />
                     <Route path="/tools" element={<ToolsMode />} />
                     <Route path="/prompts" element={<PromptEditor />} />
+                    <Route path="/asset-modules" element={<AssetModuleStudio />} />
                     <Route path="/style-lab" element={<StyleLab />} />
                     <Route path="/marketplace" element={<Marketplace />} />
                     <Route path="/marketplace/:id" element={<MarketplaceDetail />} />
