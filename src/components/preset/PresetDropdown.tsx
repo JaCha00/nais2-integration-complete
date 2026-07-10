@@ -149,7 +149,7 @@ function SortablePresetItem({
                         {preset.isDefault ? t('preset.default', '기본') : preset.name}
                     </span>
                     {isActive && (
-                        <span className="text-[10px] text-primary font-medium px-1.5 py-0.5 bg-primary/10 rounded">
+                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
                             {t('preset.active', '활성')}
                         </span>
                     )}
@@ -276,7 +276,12 @@ function PresetDialogContent({ open: externalOpen, onOpenChange: externalOnOpenC
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 shrink-0"
+                    aria-label={t('preset.title', '프리셋 관리')}
+                >
                     <FolderOpen className="h-4 w-4" />
                 </Button>
             </DialogTrigger>

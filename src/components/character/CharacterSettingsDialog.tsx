@@ -191,7 +191,7 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
                     <div 
                         key={img.id} 
                         className={cn(
-                            "flex gap-4 p-3 border rounded-lg bg-card transition-all",
+                            "flex gap-4 rounded-lg border bg-card p-3 transition-[background-color,border-color,opacity]",
                             isEnabled ? "bg-muted/10" : "bg-muted/5 opacity-50"
                         )}
                     >
@@ -201,21 +201,22 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
                                     src={img.thumbnail || img.base64} 
                                     alt="Reference" 
                                     className={cn(
-                                        "w-full h-full object-cover transition-all",
+                                        "h-full w-full object-cover transition-[filter,opacity]",
                                         !isEnabled && "grayscale"
                                     )} 
                                 />
                             ) : (
                                 <div className="flex flex-col items-center justify-center text-muted-foreground p-2 text-center">
                                     <Database className="w-8 h-8 opacity-50 mb-1" />
-                                    <span className="text-[9px] leading-tight whitespace-pre-line">{t('characterDialog.encodedDataOnly')}</span>
+                                    <span className="whitespace-pre-line text-[11px] leading-tight">{t('characterDialog.encodedDataOnly')}</span>
                                 </div>
                             )}
                             <Button
                                 variant="destructive"
                                 size="icon"
-                                className="absolute top-1 right-1 h-6 w-6 rounded-full opacity-0 group-hover/image:opacity-100 transition-opacity"
+                                className="absolute right-1 top-1 h-11 w-11 rounded-control opacity-100 shadow-panel sm:opacity-0 sm:group-hover/image:opacity-100"
                                 onClick={() => onRemove(img.id)}
+                                aria-label={t('actions.delete', '삭제')}
                             >
                                 <X className="w-3 h-3" />
                             </Button>
@@ -225,18 +226,19 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
                                     variant="secondary"
                                     size="icon"
                                     className={cn(
-                                        "absolute bottom-1 right-1 h-6 w-6 rounded-full transition-opacity",
-                                        isEnabled ? "bg-green-500/90 hover:bg-green-600" : "bg-gray-500/90 hover:bg-gray-600"
+                                        "absolute bottom-1 right-1 h-11 w-11 rounded-control shadow-panel",
+                                        isEnabled ? "bg-success text-primary-foreground hover:bg-success/90" : "bg-muted text-muted-foreground hover:bg-accent"
                                     )}
                                     onClick={() => onUpdate(img.id, { enabled: !isEnabled })}
+                                    aria-label={isEnabled ? t('characterDialog.clickToDisable', '클릭하여 비활성화') : t('characterDialog.clickToEnable', '클릭하여 활성화')}
                                 >
-                                    {isEnabled ? <Eye className="w-3 h-3 text-white" /> : <EyeOff className="w-3 h-3 text-white" />}
+                                    {isEnabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                                 </Button>
                             </Tip>
                             {/* Pre-encoded indicator */}
                             {img.encodedVibe && (
                                 <Tip content={t('characterDialog.preEncodedTooltip')}>
-                                    <div className="absolute bottom-1 left-1 bg-green-500/90 text-white text-[9px] font-bold rounded px-1 py-0.5 flex items-center gap-0.5">
+                                    <div className="absolute bottom-1 left-1 flex items-center gap-0.5 rounded-control bg-success px-1 py-0.5 text-[11px] font-bold leading-none text-primary-foreground">
                                         <Zap className="w-2.5 h-2.5" />
                                     </div>
                                 </Tip>
@@ -282,7 +284,7 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
                     <div 
                         key={img.id} 
                         className={cn(
-                            "flex gap-4 p-3 border rounded-lg bg-card transition-all",
+                            "flex gap-4 rounded-lg border bg-card p-3 transition-[background-color,border-color,opacity]",
                             isEnabled ? "bg-muted/10" : "bg-muted/5 opacity-50"
                         )}
                     >
@@ -292,22 +294,23 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
                                     src={img.thumbnail || img.base64} 
                                     alt="Reference" 
                                     className={cn(
-                                        "w-full h-full object-cover transition-all",
+                                        "h-full w-full object-cover transition-[filter,opacity]",
                                         !isEnabled && "grayscale"
                                     )} 
                                 />
                             ) : (
                                 <div className="flex flex-col items-center justify-center text-muted-foreground p-2 text-center">
                                     <ImageIcon className="w-8 h-8 opacity-50 mb-1 animate-pulse" />
-                                    <span className="text-[9px] leading-tight">{t('common.loading', 'Loading...')}</span>
+                                    <span className="text-[11px] leading-tight">{t('common.loading', 'Loading...')}</span>
                                 </div>
                             )}
                             {/* 삭제 버튼 */}
                             <Button
                                 variant="destructive"
                                 size="icon"
-                                className="absolute top-1 right-1 h-6 w-6 rounded-full opacity-0 group-hover/image:opacity-100 transition-opacity"
+                                className="absolute right-1 top-1 h-11 w-11 rounded-control opacity-100 shadow-panel sm:opacity-0 sm:group-hover/image:opacity-100"
                                 onClick={() => onRemove(img.id)}
+                                aria-label={t('actions.delete', '삭제')}
                             >
                                 <X className="w-3 h-3" />
                             </Button>
@@ -317,18 +320,19 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
                                     variant="secondary"
                                     size="icon"
                                     className={cn(
-                                        "absolute bottom-1 right-1 h-6 w-6 rounded-full transition-opacity",
-                                        isEnabled ? "bg-green-500/90 hover:bg-green-600" : "bg-gray-500/90 hover:bg-gray-600"
+                                        "absolute bottom-1 right-1 h-11 w-11 rounded-control shadow-panel",
+                                        isEnabled ? "bg-success text-primary-foreground hover:bg-success/90" : "bg-muted text-muted-foreground hover:bg-accent"
                                     )}
                                     onClick={() => onUpdate(img.id, { enabled: !isEnabled })}
+                                    aria-label={isEnabled ? t('characterDialog.clickToDisable', '클릭하여 비활성화') : t('characterDialog.clickToEnable', '클릭하여 활성화')}
                                 >
-                                    {isEnabled ? <Eye className="w-3 h-3 text-white" /> : <EyeOff className="w-3 h-3 text-white" />}
+                                    {isEnabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                                 </Button>
                             </Tip>
                             {/* 캐시된 이미지 표시 */}
                             {img.cacheKey && (
                                 <Tip content={t('characterDialog.cachedTooltip', '서버에 캐시됨 (재전송 불필요)')}>
-                                    <div className="absolute bottom-1 left-1 bg-blue-500/90 text-white text-[9px] font-bold rounded px-1 py-0.5 flex items-center gap-0.5">
+                                    <div className="absolute bottom-1 left-1 flex items-center gap-0.5 rounded-control bg-primary px-1 py-0.5 text-[11px] font-bold leading-none text-primary-foreground">
                                         <Zap className="w-2.5 h-2.5" />
                                     </div>
                                 </Tip>
@@ -388,11 +392,11 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="group relative h-auto min-h-9 min-w-0 rounded-xl px-2 py-1.5 text-xs leading-tight whitespace-normal min-[420px]:flex-1">
+                <Button variant="outline" size="sm" className="group relative h-11 min-w-0 rounded-control px-2 text-xs min-[420px]:flex-1">
                     <Users className="mr-1.5 h-3.5 w-3.5 shrink-0" />
                     <span className="min-w-0 truncate">{t('prompt.imageReference')}</span>
                     {totalCount > 0 && (
-                        <div className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold rounded-md px-1 py-0.5 min-w-[16px] h-[16px] flex items-center justify-center shadow-sm">
+                        <div className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-control bg-destructive px-1 py-0.5 text-[11px] font-bold leading-none text-destructive-foreground">
                             {totalCount}
                         </div>
                     )}
@@ -414,7 +418,7 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
                         <div className="py-2">
                             <div
                                 className={cn(
-                                    "border-2 border-dashed rounded-xl p-4 text-center transition-colors cursor-pointer mb-4",
+                                    "mb-4 cursor-pointer rounded-panel border-2 border-dashed p-4 text-center transition-colors",
                                     charDragOver
                                         ? "border-primary bg-primary/10"
                                         : "border-muted-foreground/25 hover:bg-muted/50"
@@ -449,18 +453,18 @@ export function CharacterSettingsDialog({ open, onOpenChange }: { open?: boolean
 
                     <TabsContent value="vibe" className="flex-1 overflow-y-auto min-h-0 pr-1 relative">
                         {characterImages.some(img => img.enabled !== false) && (
-                            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/60 backdrop-blur-[1px]">
+                            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/90">
                                 <Lock className="w-8 h-8 text-muted-foreground mb-2" />
                                 <p className="text-sm font-medium text-muted-foreground text-center px-4">
                                     {t('characterDialog.vibeDisabledMsg')}
                                 </p>
                             </div>
                         )}
-                        <div className={characterImages.some(img => img.enabled !== false) ? "opacity-30 pointer-events-none grayscale filter blur-[1px]" : ""}>
+                        <div className={characterImages.some(img => img.enabled !== false) ? "pointer-events-none opacity-30 grayscale" : ""}>
                             <div className="py-2">
                                 <div
                                     className={cn(
-                                        "border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer",
+                                        "cursor-pointer rounded-panel border-2 border-dashed p-6 text-center transition-colors",
                                         vibeDragOver
                                             ? "border-primary bg-primary/10"
                                             : "border-muted-foreground/25 hover:bg-muted/50"

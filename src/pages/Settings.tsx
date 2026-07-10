@@ -61,6 +61,7 @@ import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs'
 import { RestoreDialog } from '@/components/backup/RestoreDialog'
 import { StoreSnapshotRestoreDialog } from '@/components/backup/StoreSnapshotRestoreDialog'
 import { createFullAutoBackup, DISK_AUTO_BACKUP_LAST_KEY } from '@/lib/auto-backup'
+import { isMobileRuntime } from '@/platform/runtime'
 
 const LANGUAGES = [
     { code: 'ko', name: '한국어' },
@@ -449,52 +450,86 @@ export default function Settings() {
     const totalSize = Object.values(storeSizes).reduce((sum, size) => sum + (size > 0 ? size : 0), 0)
 
     return (
-        <div className="flex h-full flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
-            {/* Sidebar */}
-            <aside className="w-full shrink-0 border-b border-border/50 p-4 space-y-1 lg:w-56 lg:border-b-0 lg:border-r">
-                <h2 className="text-lg font-semibold mb-4 px-2">{t('settingsPage.title')}</h2>
-                {SECTIONS.map((section) => (
-                    <button
-                        key={section.id}
-                        onClick={() => setActiveSection(section.id)}
-                        className={cn(
-                            'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
-                            activeSection === section.id
-                                ? 'bg-primary/10 text-primary'
-                                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                        )}
-                    >
-                        <section.icon className="h-4 w-4" />
-                        {t(section.labelKey)}
-                    </button>
-                ))}
+        <div className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas lg:flex-row">
+            {/* Phones use one compact selector so settings content begins inside the first viewport. */}
+            <header className="shrink-0 border-b border-border bg-background px-3 py-2 lg:hidden">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <h1 className="shrink-0 text-lg font-semibold sm:mr-auto">{t('settingsPage.title')}</h1>
+                    <div className="flex min-w-0 items-center gap-2">
+                        <Select value={activeSection} onValueChange={(value) => setActiveSection(value as SettingsSection)}>
+                            <SelectTrigger className="min-w-0 flex-1 sm:w-64 sm:flex-none" aria-label={t('settingsPage.title')}>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {SECTIONS.map((section) => (
+                                    <SelectItem key={section.id} value={section.id}>
+                                        {t(section.labelKey)}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <button
+                            type="button"
+                            onClick={() => openUrl('https://discord.gg/N78K9GPN')}
+                            title={t('settingsPage.sections.discord', '디스코드 커뮤니티')}
+                            aria-label={t('settingsPage.sections.discord', '디스코드 커뮤니티')}
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control border border-border text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                            <MessagesSquare className="h-4 w-4" />
+                        </button>
+                    </div>
+                </div>
+            </header>
 
-                <div className="pt-2 mt-2 border-t border-border/50">
+            <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-background p-3 lg:flex">
+                <h2 className="mb-3 px-2 text-lg font-semibold">{t('settingsPage.title')}</h2>
+                <nav className="space-y-1" aria-label={t('settingsPage.title')}>
+                    {SECTIONS.map((section) => (
+                        <button
+                            key={section.id}
+                            type="button"
+                            onClick={() => setActiveSection(section.id)}
+                            aria-current={activeSection === section.id ? 'page' : undefined}
+                            className={cn(
+                                'flex min-h-11 w-full items-center gap-3 rounded-control px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                activeSection === section.id
+                                    ? 'bg-primary/10 text-primary'
+                                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                            )}
+                        >
+                            <section.icon className="h-4 w-4" />
+                            {t(section.labelKey)}
+                        </button>
+                    ))}
+                </nav>
+
+                <div className="mt-2 border-t border-border pt-2">
                     <button
+                        type="button"
                         onClick={() => openUrl('https://discord.gg/N78K9GPN')}
-                        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-muted-foreground hover:bg-[#5865F2]/10 hover:text-[#5865F2]"
+                        className="flex min-h-11 w-full items-center gap-3 rounded-control px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                         <MessagesSquare className="h-4 w-4" />
                         <span className="flex-1 text-left">{t('settingsPage.sections.discord', '디스코드 커뮤니티')}</span>
-                        <ExternalLink className="h-3 w-3 opacity-60" />
+                        <ExternalLink className="h-4 w-4 opacity-60" />
                     </button>
                 </div>
             </aside>
 
-            {/* Content */}
-            <main className="min-w-0 flex-1 p-4 sm:p-6 lg:overflow-y-auto">
-                <div className="max-w-2xl space-y-8">
+            {/* The content pane owns scrolling; the shell and mobile selector remain stable. */}
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
+                <div className="mx-auto max-w-4xl space-y-6">
                     {/* General Section */}
                     {activeSection === 'general' && (
-                        <section className="space-y-6">
+                        <section className="space-y-4">
                             <div>
-                                <h3 className="text-xl font-semibold">{t('settingsPage.sections.general')}</h3>
+                                <h3 className="text-lg font-semibold">{t('settingsPage.sections.general')}</h3>
                                 <p className="text-sm text-muted-foreground mt-1">
                                     {t('settingsPage.language.description')}
                                 </p>
                             </div>
-                            <div className="border border-border/50 rounded-xl p-6 space-y-6 bg-card/30">
-                                <div className="flex items-center justify-between">
+                            <div className="space-y-5 rounded-panel border border-border bg-card p-4 sm:p-5">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="space-y-0.5">
                                         <label className="text-sm font-medium flex items-center gap-2">
                                             <Languages className="h-4 w-4 text-muted-foreground" />
@@ -505,7 +540,7 @@ export default function Settings() {
                                         </p>
                                     </div>
                                     <Select value={i18n.language} onValueChange={(v) => i18n.changeLanguage(v)}>
-                                        <SelectTrigger className="w-40">
+                                        <SelectTrigger className="w-full sm:w-40">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -522,7 +557,7 @@ export default function Settings() {
                                 <div className="flex items-center justify-between pt-4 border-t border-border/30">
                                     <div className="space-y-0.5">
                                         <label className="text-sm font-medium flex items-center gap-2">
-                                            <Zap className="h-4 w-4 text-yellow-500" />
+                                            <Zap className="h-4 w-4 text-warning" />
                                             {t('settingsPage.streaming.title', 'Streaming Generation')}
                                         </label>
                                         <p className="text-xs text-muted-foreground">
@@ -539,7 +574,7 @@ export default function Settings() {
                                 <div className="space-y-3 pt-4 border-t border-border/30">
                                     <div className="flex items-center justify-between">
                                         <label className="text-sm font-medium flex items-center gap-2">
-                                            <Timer className="h-4 w-4 text-blue-500" />
+                                            <Timer className="h-4 w-4 text-info" />
                                             {t('settingsPage.generationDelay.title', 'Generation Delay')}
                                         </label>
                                         <span className="text-sm text-muted-foreground">{generationDelay}ms</span>
@@ -559,20 +594,21 @@ export default function Settings() {
 
                                 {/* Version Info */}
                                 <div className="space-y-4 pt-4 border-t border-border/30">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div className="space-y-0.5">
                                             <label className="text-sm font-medium flex items-center gap-2">
-                                                <Info className="h-4 w-4 text-blue-500" />
+                                                <Info className="h-4 w-4 text-info" />
                                                 {t('settingsPage.version.title', 'Version')}
                                             </label>
                                             <p className="text-xs text-muted-foreground">
                                                 NAIS2 v{appVersion}
                                             </p>
                                         </div>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={async () => {
+                                        {!isMobileRuntime && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={async () => {
                                                 setIsCheckingUpdate(true)
                                                 try {
                                                     const update = await check()
@@ -647,22 +683,23 @@ export default function Settings() {
                                                 } finally {
                                                     setIsCheckingUpdate(false)
                                                 }
-                                            }}
-                                            disabled={isCheckingUpdate}
-                                        >
-                                            {isCheckingUpdate ? (
-                                                <RefreshCw className="h-4 w-4 animate-spin" />
-                                            ) : (
-                                                <>
-                                                    <RefreshCw className="h-4 w-4 mr-2" />
-                                                    {t('settingsPage.version.checkUpdate', 'Check for Updates')}
-                                                </>
-                                            )}
-                                        </Button>
+                                                }}
+                                                disabled={isCheckingUpdate}
+                                            >
+                                                {isCheckingUpdate ? (
+                                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <>
+                                                        <RefreshCw className="h-4 w-4 mr-2" />
+                                                        {t('settingsPage.version.checkUpdate', 'Check for Updates')}
+                                                    </>
+                                                )}
+                                            </Button>
+                                        )}
                                     </div>
 
                                     {/* Pending Update Install Section - only show if pending version is newer */}
-                                    {pendingUpdate && appVersion && (() => {
+                                    {!isMobileRuntime && pendingUpdate && appVersion && (() => {
                                         // Compare versions
                                         const current = appVersion.replace(/^v/, '').split('.').map(Number)
                                         const pending = pendingUpdate.version.replace(/^v/, '').split('.').map(Number)
@@ -675,11 +712,11 @@ export default function Settings() {
                                         }
                                         if (!isNewer) return null
                                         return (
-                                            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-green-500/10 to-emerald-500/10 rounded-lg border border-green-500/20">
+                                            <div className="flex flex-col gap-3 rounded-control border border-success/30 bg-success/10 p-3 sm:flex-row sm:items-center sm:justify-between">
                                                 <div className="flex items-center gap-2">
-                                                    <Sparkles className="h-4 w-4 text-green-500" />
+                                                    <Sparkles className="h-4 w-4 text-success" />
                                                     <div>
-                                                        <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                                                        <p className="text-sm font-medium text-success">
                                                             {t('update.readyToInstall', '업데이트 설치 준비됨')}
                                                         </p>
                                                         <p className="text-xs text-muted-foreground">
@@ -712,14 +749,14 @@ export default function Settings() {
 
                     {/* Appearance Section */}
                     {activeSection === 'appearance' && (
-                        <section className="space-y-6">
+                        <section className="space-y-4">
                             <div>
-                                <h3 className="text-xl font-semibold">{t('settingsPage.sections.appearance')}</h3>
+                                <h3 className="text-lg font-semibold">{t('settingsPage.sections.appearance')}</h3>
                                 <p className="text-sm text-muted-foreground mt-1">
                                     {t('settingsPage.theme.description')}
                                 </p>
                             </div>
-                            <div className="border border-border/50 rounded-xl p-6 space-y-6 bg-card/30">
+                            <div className="space-y-5 rounded-panel border border-border bg-card p-4 sm:p-5">
                                 <div className="space-y-3">
                                     <label className="text-sm font-medium">{t('settingsPage.theme.mode')}</label>
                                     <div className="grid grid-cols-3 gap-3">
@@ -730,14 +767,17 @@ export default function Settings() {
                                         ].map((option) => (
                                             <button
                                                 key={option.value}
+                                                type="button"
                                                 onClick={() => setTheme(option.value)}
+                                                aria-pressed={theme === option.value}
                                                 className={cn(
-                                                    'flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all',
+                                                    'flex min-h-11 flex-col items-center gap-2 rounded-control border p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                                                     theme === option.value
                                                         ? 'border-primary bg-primary/5'
                                                         : 'border-border/50 hover:border-border hover:bg-muted/30'
                                                 )}
                                             >
+                                                {/** Theme selection remains a real button so keyboard and assistive-tech state match the visual state. */}
                                                 <option.icon className={cn(
                                                     'h-6 w-6',
                                                     theme === option.value ? 'text-primary' : 'text-muted-foreground'
@@ -778,9 +818,9 @@ export default function Settings() {
 
                     {/* API Section */}
                     {activeSection === 'api' && (
-                        <section className="space-y-6">
+                        <section className="space-y-4">
                             <div>
-                                <h3 className="text-xl font-semibold">{t('settingsPage.sections.api')}</h3>
+                                <h3 className="text-lg font-semibold">{t('settingsPage.sections.api')}</h3>
                                 <p className="text-sm text-muted-foreground mt-1">
                                     {t('settingsPage.api.description')}
                                 </p>
@@ -791,7 +831,7 @@ export default function Settings() {
                                 <ApiSlotCard slot={2} />
                             </div>
 
-                            <div className="border border-border/50 rounded-xl p-6 space-y-6 bg-card/30">
+                            <div className="space-y-5 rounded-panel border border-border bg-card p-4 sm:p-5">
                                 <div className="space-y-2 pt-4 border-t border-border/30">
                                     <label className="text-sm font-medium flex items-center gap-2">
                                         <img src={GeminiIcon} alt="Gemini" className="h-4 w-4" />
@@ -824,14 +864,14 @@ export default function Settings() {
 
                     {/* Storage Section */}
                     {activeSection === 'storage' && (
-                        <section className="space-y-6">
+                        <section className="space-y-4">
                             <div>
-                                <h3 className="text-xl font-semibold">{t('settingsPage.sections.storage')}</h3>
+                                <h3 className="text-lg font-semibold">{t('settingsPage.sections.storage')}</h3>
                                 <p className="text-sm text-muted-foreground mt-1">
                                     {t('settingsPage.save.description')}
                                 </p>
                             </div>
-                            <div className="border border-border/50 rounded-xl p-6 space-y-6 bg-card/30">
+                            <div className="space-y-5 rounded-panel border border-border bg-card p-4 sm:p-5">
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between">
                                         <label className="text-sm font-medium">{t('settingsPage.save.outputFolders.main.label', 'Main Output Folder')}</label>
@@ -859,21 +899,21 @@ export default function Settings() {
                                             onClick={handleSavePath}
                                             variant={(localSavePath !== savePath || isAbsolutePath !== useAbsolutePath) ? "default" : "outline"}
                                             className={(localSavePath !== savePath || isAbsolutePath !== useAbsolutePath)
-                                                ? "animate-pulse bg-yellow-500 hover:bg-yellow-600 text-black shadow-lg shadow-yellow-500/50"
+                                                ? "bg-primary text-primary-foreground"
                                                 : ""}
                                         >
                                             <Save className="h-4 w-4 mr-2" />
                                             {t('settingsPage.saveBtn')}
                                         </Button>
                                     </div>
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                         <p className="text-xs text-muted-foreground">
                                             {isAbsolutePath
                                                 ? t('settingsPage.save.absolutePathHelp', 'Images will be saved to this exact folder.')
                                                 : t('settingsPage.save.outputFolders.main.help', 'Default: Pictures/NAIS_Output')}
                                         </p>
                                         {isAbsolutePath && (
-                                            <Button variant="ghost" size="sm" onClick={handleResetToDefault} className="h-6 text-xs">
+                                            <Button variant="ghost" size="sm" onClick={handleResetToDefault} className="h-11 shrink-0 text-xs">
                                                 <RotateCcw className="h-3 w-3 mr-1" />
                                                 {t('settingsPage.save.resetDefault', 'Reset to Default')}
                                             </Button>
@@ -912,14 +952,14 @@ export default function Settings() {
                                             {t('settingsPage.saveBtn')}
                                         </Button>
                                     </div>
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                         <p className="text-xs text-muted-foreground">
                                             {isAbsoluteScenePath
                                                 ? t('settingsPage.save.absolutePathHelp', 'Images will be saved to this exact folder.')
                                                 : t('settingsPage.save.outputFolders.scene.help', 'Default: Pictures/NAIS_Scene')}
                                         </p>
                                         {isAbsoluteScenePath && (
-                                            <Button variant="ghost" size="sm" onClick={handleResetSceneToDefault} className="h-6 text-xs">
+                                            <Button variant="ghost" size="sm" onClick={handleResetSceneToDefault} className="h-11 shrink-0 text-xs">
                                                 <RotateCcw className="h-3 w-3 mr-1" />
                                                 {t('settingsPage.save.resetDefault', 'Reset to Default')}
                                             </Button>
@@ -958,14 +998,14 @@ export default function Settings() {
                                             {t('settingsPage.saveBtn')}
                                         </Button>
                                     </div>
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                         <p className="text-xs text-muted-foreground">
                                             {isAbsoluteStyleLabPath
                                                 ? t('settingsPage.save.absolutePathHelp', 'Images will be saved to this exact folder.')
                                                 : t('settingsPage.save.outputFolders.styleLab.help', 'Default: Pictures/nais-style')}
                                         </p>
                                         {isAbsoluteStyleLabPath && (
-                                            <Button variant="ghost" size="sm" onClick={handleResetStyleLabToDefault} className="h-6 text-xs">
+                                            <Button variant="ghost" size="sm" onClick={handleResetStyleLabToDefault} className="h-11 shrink-0 text-xs">
                                                 <RotateCcw className="h-3 w-3 mr-1" />
                                                 {t('settingsPage.save.resetDefault', 'Reset to Default')}
                                             </Button>
@@ -1004,14 +1044,14 @@ export default function Settings() {
                                             {t('settingsPage.saveBtn')}
                                         </Button>
                                     </div>
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                         <p className="text-xs text-muted-foreground">
                                             {isAbsoluteToolsPath
                                                 ? t('settingsPage.save.absolutePathHelp', 'Images will be saved to this exact folder.')
                                                 : t('settingsPage.save.outputFolders.tools.help', 'Default: Pictures/nais-tools')}
                                         </p>
                                         {isAbsoluteToolsPath && (
-                                            <Button variant="ghost" size="sm" onClick={handleResetToolsToDefault} className="h-6 text-xs">
+                                            <Button variant="ghost" size="sm" onClick={handleResetToolsToDefault} className="h-11 shrink-0 text-xs">
                                                 <RotateCcw className="h-3 w-3 mr-1" />
                                                 {t('settingsPage.save.resetDefault', 'Reset to Default')}
                                             </Button>
@@ -1034,7 +1074,7 @@ export default function Settings() {
                             </div>
 
                             {/* Library Path Setting */}
-                            <div className="border border-border/50 rounded-xl p-6 space-y-6 bg-card/30">
+                            <div className="space-y-5 rounded-panel border border-border bg-card p-4 sm:p-5">
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between">
                                         <label className="text-sm font-medium">{t('settingsPage.library.folder', 'Library Folder')}</label>
@@ -1062,21 +1102,21 @@ export default function Settings() {
                                             onClick={handleSaveLibraryPath}
                                             variant={(localLibraryPath !== libraryPath || isAbsoluteLibraryPath !== useAbsoluteLibraryPath) ? "default" : "outline"}
                                             className={(localLibraryPath !== libraryPath || isAbsoluteLibraryPath !== useAbsoluteLibraryPath)
-                                                ? "animate-pulse bg-yellow-500 hover:bg-yellow-600 text-black shadow-lg shadow-yellow-500/50"
+                                                ? "bg-primary text-primary-foreground"
                                                 : ""}
                                         >
                                             <Save className="h-4 w-4 mr-2" />
                                             {t('settingsPage.saveBtn')}
                                         </Button>
                                     </div>
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                         <p className="text-xs text-muted-foreground">
                                             {isAbsoluteLibraryPath
                                                 ? t('settingsPage.library.absolutePathHelp', 'Library files will be saved to this exact folder.')
                                                 : t('settingsPage.library.folderHelp', 'Default: Pictures/NAIS_Library')}
                                         </p>
                                         {isAbsoluteLibraryPath && (
-                                            <Button variant="ghost" size="sm" onClick={handleResetLibraryToDefault} className="h-6 text-xs">
+                                            <Button variant="ghost" size="sm" onClick={handleResetLibraryToDefault} className="h-11 shrink-0 text-xs">
                                                 <RotateCcw className="h-3 w-3 mr-1" />
                                                 {t('settingsPage.save.resetDefault', 'Reset to Default')}
                                             </Button>
@@ -1086,8 +1126,8 @@ export default function Settings() {
                             </div>
 
                             {/* Image Format Setting */}
-                            <div className="border border-border/50 rounded-xl p-6 space-y-4 bg-card/30">
-                                <div className="flex items-center justify-between">
+                            <div className="space-y-4 rounded-panel border border-border bg-card p-4 sm:p-5">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="space-y-0.5">
                                         <label className="text-sm font-medium">{t('settingsPage.save.imageFormat.title', 'Image Format')}</label>
                                         <p className="text-xs text-muted-foreground">
@@ -1113,16 +1153,16 @@ export default function Settings() {
 
                     {/* Shortcuts Section */}
                     {activeSection === 'shortcuts' && (
-                        <section className="space-y-6">
+                        <section className="space-y-4">
                             <div>
-                                <h2 className="text-xl font-semibold">{t('settingsPage.shortcuts.title', '단축키')}</h2>
+                                <h2 className="text-lg font-semibold">{t('settingsPage.shortcuts.title', '단축키')}</h2>
                                 <p className="text-sm text-muted-foreground mt-1">
                                     {t('settingsPage.shortcuts.description', '전역 단축키를 설정합니다.')}
                                 </p>
                             </div>
 
                             {/* Enable/Disable Shortcuts */}
-                            <div className="border border-border/50 rounded-xl p-6 bg-card/30">
+                            <div className="rounded-panel border border-border bg-card p-4 sm:p-5">
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <label className="text-sm font-medium">{t('settingsPage.shortcuts.enable', '단축키 활성화')}</label>
@@ -1138,10 +1178,10 @@ export default function Settings() {
                             </div>
 
                             {/* Shortcut Bindings */}
-                            <div className="border border-border/50 rounded-xl p-6 space-y-4 bg-card/30">
+                            <div className="space-y-4 rounded-panel border border-border bg-card p-4 sm:p-5">
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-sm font-medium">{t('settingsPage.shortcuts.bindings', '키 바인딩')}</h3>
-                                    <Button variant="ghost" size="sm" onClick={resetAllBindings}>
+                                    <Button variant="ghost" size="sm" className="h-11" onClick={resetAllBindings}>
                                         <RotateCcw className="h-3 w-3 mr-1" />
                                         {t('settingsPage.shortcuts.resetAll', '전체 초기화')}
                                     </Button>
@@ -1251,21 +1291,21 @@ export default function Settings() {
                     
                     {/* Backup Section */}
                     {activeSection === 'backup' && (
-                        <section className="space-y-6">
+                        <section className="space-y-4">
                             <div>
-                                <h3 className="text-xl font-semibold">{t('settingsPage.backup.title')}</h3>
+                                <h3 className="text-lg font-semibold">{t('settingsPage.backup.title')}</h3>
                                 <p className="text-sm text-muted-foreground mt-1">
                                     {t('settingsPage.backup.description')}
                                 </p>
                             </div>
                             
                             {/* Export/Import */}
-                            <div className="border border-border/50 rounded-xl p-6 space-y-6 bg-card/30">
+                            <div className="space-y-5 rounded-panel border border-border bg-card p-4 sm:p-5">
                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div className="space-y-1">
                                             <label className="text-sm font-medium flex items-center gap-2">
-                                                <Download className="h-4 w-4 text-blue-500" />
+                                                <Download className="h-4 w-4 text-info" />
                                                 {t('settingsPage.backup.export')}
                                             </label>
                                             <p className="text-xs text-muted-foreground">
@@ -1284,10 +1324,10 @@ export default function Settings() {
                                 </div>
                                 
                                 <div className="border-t border-border/30 pt-6">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div className="space-y-1">
                                             <label className="text-sm font-medium flex items-center gap-2">
-                                                <Upload className="h-4 w-4 text-green-500" />
+                                                <Upload className="h-4 w-4 text-success" />
                                                 {t('settingsPage.backup.import')}
                                             </label>
                                             <p className="text-xs text-muted-foreground">
@@ -1316,11 +1356,11 @@ export default function Settings() {
                             </div>
 
                             {/* Disk Auto-backup */}
-                            <div className="border border-border/50 rounded-xl p-6 space-y-4 bg-card/30">
-                                <div className="flex items-center justify-between gap-4">
+                            <div className="space-y-4 rounded-panel border border-border bg-card p-4 sm:p-5">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="space-y-1">
                                         <label className="text-sm font-medium flex items-center gap-2">
-                                            <Database className="h-4 w-4 text-purple-500" />
+                                            <Database className="h-4 w-4 text-info" />
                                             {t('settingsPage.backup.autoSnapshotTitle')}
                                         </label>
                                         <p className="text-xs text-muted-foreground">
@@ -1330,7 +1370,7 @@ export default function Settings() {
                                             {t('settingsPage.backup.snapshotLocation')}
                                         </p>
                                     </div>
-                                    <div className="flex gap-2">
+                                    <div className="flex flex-wrap gap-2">
                                         <Button
                                             variant="outline"
                                             onClick={handleCreateAutoBackupNow}
@@ -1359,11 +1399,11 @@ export default function Settings() {
                             </div>
 
                             {/* Store Snapshots */}
-                            <div className="border border-border/50 rounded-xl p-6 space-y-4 bg-card/30">
-                                <div className="flex items-center justify-between gap-4">
+                            <div className="space-y-4 rounded-panel border border-border bg-card p-4 sm:p-5">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="space-y-1">
                                         <label className="text-sm font-medium flex items-center gap-2">
-                                            <Database className="h-4 w-4 text-cyan-500" />
+                                            <Database className="h-4 w-4 text-info" />
                                             {t('settingsPage.backup.storeSnapshotTitle')}
                                         </label>
                                         <p className="text-xs text-muted-foreground">
@@ -1381,7 +1421,7 @@ export default function Settings() {
                             </div>
                             
                             {/* Data Sizes */}
-                            <div className="border border-border/50 rounded-xl p-6 space-y-4 bg-card/30">
+                            <div className="space-y-4 rounded-panel border border-border bg-card p-4 sm:p-5">
                                 <div className="flex items-center justify-between">
                                     <h4 className="text-sm font-medium flex items-center gap-2">
                                         <HardDrive className="h-4 w-4 text-muted-foreground" />
@@ -1405,8 +1445,8 @@ export default function Settings() {
                                             </span>
                                             <span className={cn(
                                                 "font-mono",
-                                                size > 1024 * 1024 && "text-yellow-500",
-                                                size > 5 * 1024 * 1024 && "text-red-500"
+                                                size > 1024 * 1024 && "text-warning",
+                                                size > 5 * 1024 * 1024 && "text-destructive"
                                             )}>
                                                 {formatSize(size)}
                                             </span>
@@ -1420,10 +1460,10 @@ export default function Settings() {
                             </div>
                             
                             {/* Warning */}
-                            <div className="border border-yellow-500/30 rounded-xl p-4 bg-yellow-500/5">
+                            <div className="rounded-panel border border-warning/30 bg-warning/10 p-4">
                                 <div className="flex gap-3">
-                                    <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0 mt-0.5" />
-                                    <div className="text-sm text-yellow-600 dark:text-yellow-400">
+                                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+                                    <div className="text-sm text-warning">
                                         <p className="font-medium">{t('settingsPage.backup.restoreWarning')}</p>
                                         <p className="text-xs mt-1 opacity-80">
                                             {t('settingsPage.backup.confirmRestoreDesc')}
@@ -1440,7 +1480,7 @@ export default function Settings() {
                         </section>
                     )}
                 </div>
-            </main>
+            </div>
         </div>
     )
 }
@@ -1472,18 +1512,18 @@ function ApiSlotCard({ slot }: { slot: ApiSlot }) {
     const helpText = slot === 2 ? t('settingsPage.api.slot2Help') : t('settingsPage.api.tokenHelp')
     const accent = slot === 2
         ? {
-            active: 'bg-purple-500/20 text-purple-600 dark:text-purple-400',
-            border: 'border-purple-500/20',
-            iconBg: 'bg-purple-500/20',
-            icon: 'text-purple-500',
-            text: 'text-purple-600 dark:text-purple-400',
+            active: 'bg-info/15 text-info',
+            border: 'border-info/30',
+            iconBg: 'bg-info/15',
+            icon: 'text-info',
+            text: 'text-info',
         }
         : {
-            active: 'bg-amber-500/20 text-amber-600 dark:text-amber-400',
-            border: 'border-amber-500/20',
-            iconBg: 'bg-amber-500/20',
-            icon: 'text-amber-500',
-            text: 'text-amber-600 dark:text-amber-400',
+            active: 'bg-primary/15 text-primary',
+            border: 'border-primary/30',
+            iconBg: 'bg-primary/15',
+            icon: 'text-primary',
+            text: 'text-primary',
         }
 
     const [apiToken, setApiToken] = useState(currentToken)
@@ -1514,17 +1554,17 @@ function ApiSlotCard({ slot }: { slot: ApiSlot }) {
 
     return (
         <div className={cn(
-            'border rounded-xl p-5 space-y-4 bg-card/30 transition-opacity',
+            'space-y-4 rounded-panel border bg-card p-4 transition-opacity sm:p-5',
             currentVerified ? accent.border : 'border-border/50',
             currentVerified && !enabled && 'opacity-70'
         )}>
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <label className="text-sm font-medium flex items-center gap-2">
                     <img src={NovelAILogo} alt="NovelAI" className="h-4 w-4" />
                     {slotLabel}
                     {currentVerified && (
                         <span className={cn(
-                            'text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full',
+                            'rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider',
                             enabled ? accent.active : 'bg-muted/40 text-muted-foreground'
                         )}>
                             {enabled ? t('settingsPage.api.slotActive') : t('settingsPage.api.slotPaused')}
@@ -1546,7 +1586,7 @@ function ApiSlotCard({ slot }: { slot: ApiSlot }) {
 
             {currentVerified && currentAnlas && (
                 <div className="flex items-center gap-4 rounded-lg bg-muted/30 p-3">
-                    <div className={cn('p-3 rounded-full', accent.iconBg)}>
+                    <div className={cn('rounded-control p-3', accent.iconBg)}>
                         <Coins className={cn('h-6 w-6', accent.icon)} />
                     </div>
                     <div>
@@ -1560,7 +1600,7 @@ function ApiSlotCard({ slot }: { slot: ApiSlot }) {
                 </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
                 <div className="relative flex-1">
                     <Input
                         type="password"
@@ -1572,14 +1612,14 @@ function ApiSlotCard({ slot }: { slot: ApiSlot }) {
                         }}
                         className={cn(
                             'pr-10',
-                            tokenStatus === 'valid' && 'border-green-500 focus-visible:ring-green-500',
+                            tokenStatus === 'valid' && 'border-success focus-visible:ring-success',
                             tokenStatus === 'invalid' && 'border-destructive focus-visible:ring-destructive'
                         )}
                     />
                     {tokenStatus !== 'idle' && tokenStatus !== 'verifying' && (
                         <div className="absolute right-3 top-1/2 -translate-y-1/2">
                             {tokenStatus === 'valid' ? (
-                                <Check className="h-4 w-4 text-green-500" />
+                                <Check className="h-4 w-4 text-success" />
                             ) : (
                                 <X className="h-4 w-4 text-destructive" />
                             )}
@@ -1597,7 +1637,7 @@ function ApiSlotCard({ slot }: { slot: ApiSlot }) {
                     )}
                 </Button>
                 {currentVerified && (
-                    <Button variant="outline" onClick={handleClearToken}>
+                    <Button variant="outline" onClick={handleClearToken} aria-label={t('settingsPage.api.clearToken', '토큰 지우기')}>
                         <X className="h-4 w-4" />
                     </Button>
                 )}
@@ -1700,7 +1740,7 @@ function ShortcutRow({ action, binding, allBindings, isEditing, recordedBinding,
 
     return (
         <div className="space-y-2">
-            <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-muted/50">
+            <div className="flex flex-col gap-2 rounded-control px-3 py-2 hover:bg-muted/50 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-sm">{t(binding.description, binding.description)}</span>
                 <div className="flex items-center gap-2">
                     {isEditing ? (
@@ -1711,11 +1751,11 @@ function ShortcutRow({ action, binding, allBindings, isEditing, recordedBinding,
                             )}>
                                 {recordedBinding ? recordedBinding.label : t('settingsPage.shortcuts.pressKey', '키 입력...')}
                             </div>
-                            <Button size="sm" variant="ghost" onClick={onCancel}>
+                            <Button size="sm" variant="ghost" className="h-11 w-11 px-0" onClick={onCancel} aria-label={t('common.cancel', '취소')}>
                                 <X className="h-4 w-4" />
                             </Button>
                             {recordedBinding && (
-                                <Button size="sm" variant="default" onClick={handleSave}>
+                                <Button size="sm" variant="default" className="h-11 w-11 px-0" onClick={handleSave} aria-label={t('settingsPage.saveBtn')}>
                                     <Check className="h-4 w-4" />
                                 </Button>
                             )}
@@ -1723,13 +1763,14 @@ function ShortcutRow({ action, binding, allBindings, isEditing, recordedBinding,
                     ) : (
                         <>
                             <button
+                                type="button"
                                 onClick={onStartEdit}
-                                className="px-3 py-1.5 rounded-md text-sm font-mono bg-muted hover:bg-muted/80 min-w-[100px] text-center"
+                                className="min-h-11 min-w-[100px] rounded-control bg-muted px-3 text-center font-mono text-sm hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
                                 {displayBinding.label}
                             </button>
                             <Tip content={t('settingsPage.shortcuts.reset', '초기화')}>
-                                <Button size="sm" variant="ghost" onClick={onReset}>
+                                <Button size="sm" variant="ghost" className="h-11 w-11 px-0" onClick={onReset} aria-label={t('settingsPage.shortcuts.reset', '초기화')}>
                                     <RotateCcw className="h-3 w-3" />
                                 </Button>
                             </Tip>
@@ -1740,7 +1781,7 @@ function ShortcutRow({ action, binding, allBindings, isEditing, recordedBinding,
 
             {/* 충돌 경고 */}
             {conflictAction && recordedBinding && (
-                <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                <div className="flex flex-col gap-3 rounded-control border border-destructive/20 bg-destructive/10 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2 text-sm text-destructive">
                         <Info className="h-4 w-4" />
                         <span>
@@ -1752,13 +1793,14 @@ function ShortcutRow({ action, binding, allBindings, isEditing, recordedBinding,
                             size="sm"
                             variant="ghost"
                             onClick={() => setConflictAction(null)}
-                            className="text-destructive hover:text-destructive"
+                            className="h-11 text-destructive hover:text-destructive"
                         >
                             {t('common.cancel', '취소')}
                         </Button>
                         <Button
                             size="sm"
                             variant="destructive"
+                            className="h-11"
                             onClick={handleForceOverride}
                         >
                             {t('settingsPage.shortcuts.override', '덮어쓰기')}

@@ -90,19 +90,19 @@ export function RotationStatusBar() {
 
     return (
         <div className={cn(
-            'rounded-2xl border px-4 py-3 flex items-center gap-3 shadow-sm',
+            'flex min-w-0 flex-col gap-3 rounded-panel border px-3 py-3 sm:flex-row sm:items-center',
             canResumeSaved
-                ? 'border-amber-500/40 bg-amber-500/5'
+                ? 'border-warning/40 bg-warning/10'
                 : resting
-                    ? 'border-blue-500/40 bg-blue-500/5'
+                    ? 'border-info/40 bg-info/10'
                     : paused
-                    ? 'border-yellow-500/40 bg-yellow-500/5'
-                    : 'border-primary/40 bg-primary/5'
-        )}>
+                    ? 'border-warning/40 bg-warning/10'
+                    : 'border-primary/40 bg-primary/10'
+        )} role="status" aria-live="polite">
             {resting ? (
-                <Coffee className="h-5 w-5 shrink-0 text-blue-400" />
+                <Coffee className="hidden h-5 w-5 shrink-0 text-info sm:block" aria-hidden="true" />
             ) : (
-                <Drama className={cn('h-5 w-5 shrink-0', active ? 'text-primary' : 'text-amber-500')} />
+                <Drama className={cn('hidden h-5 w-5 shrink-0 sm:block', active ? 'text-primary' : 'text-warning')} aria-hidden="true" />
             )}
             <div className="min-w-0 flex-1">
                 {canResumeSaved ? (
@@ -114,7 +114,7 @@ export function RotationStatusBar() {
                     </>
                 ) : resting ? (
                     <>
-                        <div className="text-sm font-semibold text-blue-300">로테이션 휴식 중 - 약 {formatDuration(restRemaining)} 후 재개</div>
+                        <div className="text-sm font-semibold text-info">로테이션 휴식 중 - 약 {formatDuration(restRemaining)} 후 재개</div>
                         <div className="truncate text-xs text-muted-foreground">
                             다음 캐릭터: {currentName} · {currentIndex + 1}/{characterIds.length}번째 · {currentRepeat + 1}/{repeats}회차
                         </div>
@@ -132,18 +132,18 @@ export function RotationStatusBar() {
                 )}
             </div>
             {active && !paused && !resting && total > 0 && (
-                <div className="hidden w-28 shrink-0 overflow-hidden rounded-full bg-white/10 sm:block">
-                    <div className="h-1.5 bg-primary transition-all" style={{ width: `${Math.min(100, (completed / total) * 100)}%` }} />
+                <div className="hidden w-28 shrink-0 overflow-hidden rounded-full bg-muted sm:block" role="progressbar" aria-label="로테이션 진행률" aria-valuemin={0} aria-valuemax={total} aria-valuenow={completed}>
+                    <div className="h-1.5 bg-primary transition-[width] duration-standard" style={{ width: `${Math.min(100, (completed / total) * 100)}%` }} />
                 </div>
             )}
-            <div className="flex shrink-0 items-center gap-1.5">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 sm:ml-auto sm:shrink-0">
                 {canResumeSaved ? (
                     <>
-                        <Button size="sm" variant="generate" onClick={handleResumeSaved}>
+                        <Button size="sm" variant="generate" className="h-11" onClick={handleResumeSaved}>
                             <Play className="mr-1 h-3.5 w-3.5" />
                             이어서 시작
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={handleDiscardSavedSession} title="저장된 세션 완전 취소">
+                        <Button size="sm" variant="ghost" className="h-11" onClick={handleDiscardSavedSession} title="저장된 세션 완전 취소">
                             <X className="h-4 w-4" />
                             완전 취소
                         </Button>
@@ -151,22 +151,22 @@ export function RotationStatusBar() {
                 ) : (
                     <>
                         {resting && (
-                            <Button size="sm" variant="outline" onClick={endRest}>
+                            <Button size="sm" variant="outline" className="h-11" onClick={endRest}>
                                 <FastForward className="mr-1 h-3.5 w-3.5" />
                                 지금 재개
                             </Button>
                         )}
                         {paused && (
-                            <Button size="sm" variant="generate" onClick={resume}>
+                            <Button size="sm" variant="generate" className="h-11" onClick={resume}>
                                 <RotateCcw className="mr-1 h-3.5 w-3.5" />
                                 재개
                             </Button>
                         )}
-                        <Button size="sm" variant="outline" onClick={handleStopKeepingSnapshot}>
+                        <Button size="sm" variant="outline" className="h-11" onClick={handleStopKeepingSnapshot}>
                             <StopIcon className="mr-1 h-3.5 w-3.5" />
                             중단하고 나중에 이어서
                         </Button>
-                        <Button size="sm" variant="destructive" onClick={handleCancelRotation}>
+                        <Button size="sm" variant="destructive" className="h-11" onClick={handleCancelRotation}>
                             <X className="mr-1 h-3.5 w-3.5" />
                             완전 취소
                         </Button>

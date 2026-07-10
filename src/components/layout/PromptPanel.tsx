@@ -221,12 +221,14 @@ export function PromptPanel() {
     }, [isConflict, isSceneMode, rotationActive, sceneIsGenerating, sceneIsCancelling, cancelSceneGeneration, startNewGenerationSession, isGenerating, cancelGeneration, generate])
 
     return (
-        <div className="flex-1 flex flex-col h-full overflow-hidden p-2">
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2">
             {/* Source Image Panel (I2I/Inpaint Mode) */}
             <SourceImagePanel />
 
-            {/* Prompt Inputs Area (Flex Grow, No Scroll on Container) - relative 컨테이너 */}
-            <div className="flex-1 flex flex-col min-h-0 gap-2 mb-2 relative">
+            {/* This is the only scrolling region in the prompt sheet. The action
+                rail and generate control below remain reachable on short Android
+                viewports while every prompt field stays available. */}
+            <div className="relative mb-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain pr-1">
                 {/* Character Prompt Panel (Accordion Style) - 프롬프트 영역 위에 오버레이 */}
                 <CharacterPromptPanel
                     open={characterPanelOpen}
@@ -235,13 +237,15 @@ export function PromptPanel() {
 
                 {/* Base Prompt - Collapsible */}
                 <div className={cn(
-                    "flex flex-col transition-all duration-200 overflow-hidden",
-                    basePromptCollapsed ? "flex-none h-[28px]" : "min-h-0 basis-[30%] flex-1"
+                    "flex flex-none flex-col overflow-hidden",
+                    basePromptCollapsed ? "" : "min-h-36"
                 )}>
                     <button
                         type="button"
                         onClick={() => setBasePromptCollapsed(!basePromptCollapsed)}
-                        className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1 hover:text-foreground cursor-pointer flex-shrink-0"
+                        className="flex h-11 shrink-0 items-center gap-2 rounded-control px-2 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-expanded={!basePromptCollapsed}
+                        aria-controls="prompt-base-field"
                     >
                         {basePromptCollapsed ? (
                             <ChevronDown className="h-3 w-3" />
@@ -256,25 +260,29 @@ export function PromptPanel() {
                         )}
                     </button>
                     {!basePromptCollapsed && (
-                        <AutocompleteTextarea
-                            placeholder={t('prompt.basePlaceholder')}
-                            value={basePrompt}
-                            onChange={(e) => setBasePrompt(e.target.value)}
-                            className="flex-1 min-h-0 resize-none rounded-xl"
-                            style={{ fontSize: `${promptFontSize}px` }}
-                        />
+                        <div id="prompt-base-field" className="min-h-0 flex-1">
+                            <AutocompleteTextarea
+                                placeholder={t('prompt.basePlaceholder')}
+                                value={basePrompt}
+                                onChange={(e) => setBasePrompt(e.target.value)}
+                                className="h-full min-h-24 resize-none rounded-control"
+                                style={{ fontSize: `${promptFontSize}px` }}
+                            />
+                        </div>
                     )}
                 </div>
 
                 {/* Additional Prompt - Collapsible */}
                 <div className={cn(
-                    "flex flex-col transition-all duration-200 overflow-hidden",
-                    additionalPromptCollapsed ? "flex-none h-[28px]" : "min-h-0 basis-[25%] flex-1"
+                    "flex flex-none flex-col overflow-hidden",
+                    additionalPromptCollapsed ? "" : "min-h-32"
                 )}>
                     <button
                         type="button"
                         onClick={() => setAdditionalPromptCollapsed(!additionalPromptCollapsed)}
-                        className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1 hover:text-foreground cursor-pointer flex-shrink-0"
+                        className="flex h-11 shrink-0 items-center gap-2 rounded-control px-2 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-expanded={!additionalPromptCollapsed}
+                        aria-controls="prompt-additional-field"
                     >
                         {additionalPromptCollapsed ? (
                             <ChevronDown className="h-3 w-3" />
@@ -289,25 +297,29 @@ export function PromptPanel() {
                         )}
                     </button>
                     {!additionalPromptCollapsed && (
-                        <AutocompleteTextarea
-                            placeholder={t('prompt.additionalPlaceholder')}
-                            value={additionalPrompt}
-                            onChange={(e) => setAdditionalPrompt(e.target.value)}
-                            className="flex-1 min-h-0 resize-none rounded-xl"
-                            style={{ fontSize: `${promptFontSize}px` }}
-                        />
+                        <div id="prompt-additional-field" className="min-h-0 flex-1">
+                            <AutocompleteTextarea
+                                placeholder={t('prompt.additionalPlaceholder')}
+                                value={additionalPrompt}
+                                onChange={(e) => setAdditionalPrompt(e.target.value)}
+                                className="h-full min-h-20 resize-none rounded-control"
+                                style={{ fontSize: `${promptFontSize}px` }}
+                            />
+                        </div>
                     )}
                 </div>
 
                 {/* Detail Prompt - Collapsible */}
                 <div className={cn(
-                    "flex flex-col transition-all duration-200 overflow-hidden",
-                    detailPromptCollapsed ? "flex-none h-[28px]" : "min-h-0 basis-[25%] flex-1"
+                    "flex flex-none flex-col overflow-hidden",
+                    detailPromptCollapsed ? "" : "min-h-32"
                 )}>
                     <button
                         type="button"
                         onClick={() => setDetailPromptCollapsed(!detailPromptCollapsed)}
-                        className="flex items-center gap-1 text-xs font-medium text-muted-foreground mb-1 hover:text-foreground cursor-pointer flex-shrink-0"
+                        className="flex h-11 shrink-0 items-center gap-2 rounded-control px-2 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-expanded={!detailPromptCollapsed}
+                        aria-controls="prompt-detail-field"
                     >
                         {detailPromptCollapsed ? (
                             <ChevronDown className="h-3 w-3" />
@@ -322,25 +334,29 @@ export function PromptPanel() {
                         )}
                     </button>
                     {!detailPromptCollapsed && (
-                        <AutocompleteTextarea
-                            placeholder={t('prompt.detailPlaceholder')}
-                            value={detailPrompt}
-                            onChange={(e) => setDetailPrompt(e.target.value)}
-                            className="flex-1 min-h-0 resize-none rounded-xl"
-                            style={{ fontSize: `${promptFontSize}px` }}
-                        />
+                        <div id="prompt-detail-field" className="min-h-0 flex-1">
+                            <AutocompleteTextarea
+                                placeholder={t('prompt.detailPlaceholder')}
+                                value={detailPrompt}
+                                onChange={(e) => setDetailPrompt(e.target.value)}
+                                className="h-full min-h-20 resize-none rounded-control"
+                                style={{ fontSize: `${promptFontSize}px` }}
+                            />
+                        </div>
                     )}
                 </div>
 
                 {/* Negative Prompt - 20% (collapsible, collapses downward) */}
                 <div className={cn(
-                    "flex flex-col transition-all duration-200 overflow-hidden",
-                    negativePromptCollapsed ? "flex-none h-[28px]" : "min-h-0 basis-[20%]"
+                    "flex flex-none flex-col overflow-hidden",
+                    negativePromptCollapsed ? "" : "min-h-32"
                 )}>
                     <button
                         type="button"
                         onClick={() => setNegativePromptCollapsed(!negativePromptCollapsed)}
-                        className="flex items-center gap-1 text-xs font-medium text-destructive/80 mb-1 hover:text-destructive cursor-pointer flex-shrink-0"
+                        className="flex h-11 shrink-0 items-center gap-2 rounded-control px-2 text-left text-xs font-medium text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-expanded={!negativePromptCollapsed}
+                        aria-controls="prompt-negative-field"
                     >
                         {negativePromptCollapsed ? (
                             <ChevronDown className="h-3 w-3" />
@@ -355,26 +371,28 @@ export function PromptPanel() {
                         )}
                     </button>
                     {!negativePromptCollapsed && (
-                        <AutocompleteTextarea
-                            placeholder={t('prompt.negativePlaceholder')}
-                            value={negativePrompt}
-                            onChange={(e) => setNegativePrompt(e.target.value)}
-                            className="flex-1 min-h-0 resize-none rounded-xl border-destructive/20"
-                            style={{ fontSize: `${promptFontSize}px` }}
-                        />
+                        <div id="prompt-negative-field" className="min-h-0 flex-1">
+                            <AutocompleteTextarea
+                                placeholder={t('prompt.negativePlaceholder')}
+                                value={negativePrompt}
+                                onChange={(e) => setNegativePrompt(e.target.value)}
+                                className="h-full min-h-20 resize-none rounded-control border-destructive/30"
+                                style={{ fontSize: `${promptFontSize}px` }}
+                            />
+                        </div>
                     )}
                 </div>
             </div>
 
             {/* Quick Actions & Parameters Button */}
-            <div className="mb-3 grid grid-cols-2 gap-2 min-[420px]:flex">
+            <div className="mb-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.75rem_2.75rem_2.75rem] gap-2 min-[480px]:flex">
                 <CharacterSettingsDialog open={imageRefDialogOpen} onOpenChange={setImageRefDialogOpen} />
                 {/* Character Prompt Toggle Button */}
                 <Button
                     variant={characterPanelOpen ? "default" : "outline"}
                     size="sm"
                     className={cn(
-                        "relative h-auto min-h-9 min-w-0 rounded-xl px-2 py-1.5 text-xs leading-tight whitespace-normal min-[420px]:flex-1",
+                        "relative h-11 min-w-0 rounded-control px-2 text-xs",
                         characterPanelOpen && "bg-primary text-primary-foreground"
                     )}
                     onClick={() => setCharacterPanelOpen(!characterPanelOpen)}
@@ -383,7 +401,7 @@ export function PromptPanel() {
                     <span className="min-w-0 truncate">{t('prompt.character', '캐릭터')}</span>
                     {characterCount > 0 && (
                         <div className={cn(
-                            "absolute -top-1 -right-1 text-[9px] font-bold rounded-md px-1 py-0.5 min-w-[16px] h-[16px] flex items-center justify-center shadow-sm",
+                            "absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-md px-1 py-0.5 text-[11px] font-bold leading-none shadow-sm",
                             characterPanelOpen
                                 ? "bg-primary-foreground text-primary"
                                 : "bg-primary text-primary-foreground"
@@ -396,19 +414,21 @@ export function PromptPanel() {
                 <Button
                     variant="outline"
                     size="sm"
-                    className="h-auto min-h-9 min-w-0 rounded-xl px-2 py-1.5 text-xs leading-tight whitespace-normal min-[420px]:flex-1"
+                    className="h-11 w-11 min-w-0 rounded-control px-0 text-xs min-[480px]:w-auto min-[480px]:flex-1 min-[480px]:px-2"
                     onClick={() => setFragmentDialogOpen(true)}
+                    aria-label={t('prompt.fragment')}
                 >
-                    <Puzzle className="mr-1.5 h-3.5 w-3.5 shrink-0" />
-                    <span className="min-w-0 truncate">{t('prompt.fragment')}</span>
+                    <Puzzle className="h-3.5 w-3.5 shrink-0 min-[480px]:mr-1.5" />
+                    <span className="sr-only min-[480px]:not-sr-only min-[480px]:min-w-0 min-[480px]:truncate">{t('prompt.fragment')}</span>
                 </Button>
                 {/* AI Prompt Generator Button */}
                 <Tip content={t('promptGenerator.desc', 'Gemini AI로 프롬프트 생성')}>
                     <Button
                         variant="outline"
                         size="icon"
-                        className="h-9 w-9 rounded-xl shrink-0 hover:bg-accent"
+                        className="h-11 w-11 shrink-0 rounded-control hover:bg-accent"
                         onClick={() => setPromptGenOpen(true)}
+                        aria-label={t('promptGenerator.title', 'AI 프롬프트 생성')}
                     >
                         <img src={GeminiIcon} alt="Gemini" className="h-5 w-5" />
                     </Button>
@@ -416,7 +436,7 @@ export function PromptPanel() {
                 {/* Parameter Settings Dialog */}
                 <Dialog open={parameterDialogOpen} onOpenChange={setParameterDialogOpen}>
                     <DialogTrigger asChild>
-                        <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl shrink-0">
+                        <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-control" aria-label={t('parameters.title')}>
                             <SlidersHorizontal className="h-4 w-4" />
                         </Button>
                     </DialogTrigger>
@@ -435,7 +455,7 @@ export function PromptPanel() {
                                     {t('parameters.model')}
                                 </Label>
                                 <Select value={model} onValueChange={setModel}>
-                                    <SelectTrigger className="rounded-xl">
+                                    <SelectTrigger className="rounded-control">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -468,22 +488,24 @@ export function PromptPanel() {
                                         value={seed}
                                         onChange={(e) => setSeed(Number(e.target.value))}
                                         disabled={seedLocked}
-                                        className="flex-1 h-9 text-xs rounded-xl"
+                                        className="h-11 flex-1 rounded-control text-xs"
                                     />
                                     <Button
                                         variant="outline"
                                         size="icon"
-                                        className={cn("h-9 w-9 rounded-xl shrink-0", seedLocked && 'border-primary text-primary bg-primary/10')}
+                                        className={cn("h-11 w-11 shrink-0 rounded-control", seedLocked && 'border-primary bg-primary/10 text-primary')}
                                         onClick={() => setSeedLocked(!seedLocked)}
+                                        aria-label={seedLocked ? t('settings.unlockSeed', '시드 잠금 해제') : t('settings.lockSeed', '시드 잠금')}
                                     >
                                         {seedLocked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
                                     </Button>
                                     <Button
                                         variant="outline"
                                         size="icon"
-                                        className="h-9 w-9 rounded-xl shrink-0"
+                                        className="h-11 w-11 shrink-0 rounded-control"
                                         onClick={handleRandomSeed}
                                         disabled={seedLocked}
+                                        aria-label={t('settings.randomSeed', '무작위 시드')}
                                     >
                                         <Dice5 className="h-3.5 w-3.5" />
                                     </Button>
@@ -543,7 +565,7 @@ export function PromptPanel() {
                                 <div className="space-y-2">
                                     <Label>{t('parameters.sampler')}</Label>
                                     <Select value={sampler} onValueChange={setSampler}>
-                                        <SelectTrigger className="rounded-xl">
+                                        <SelectTrigger className="rounded-control">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -556,7 +578,7 @@ export function PromptPanel() {
                                 <div className="space-y-2">
                                     <Label>{t('parameters.scheduler')}</Label>
                                     <Select value={scheduler} onValueChange={setScheduler}>
-                                        <SelectTrigger className="rounded-xl">
+                                        <SelectTrigger className="rounded-control">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -579,6 +601,7 @@ export function PromptPanel() {
                                 <Switch
                                     checked={smea}
                                     onChange={(e) => setSmea(e.target.checked)}
+                                    aria-label={t('parameters.smea')}
                                 />
                             </div>
 
@@ -593,6 +616,7 @@ export function PromptPanel() {
                                     checked={smeaDyn}
                                     disabled={!smea}
                                     onChange={(e) => setSmeaDyn(e.target.checked)}
+                                    aria-label={t('parameters.smeaDyn')}
                                 />
                             </div>
 
@@ -607,6 +631,7 @@ export function PromptPanel() {
                                 <Switch
                                     checked={variety}
                                     onChange={(e) => setVariety(e.target.checked)}
+                                    aria-label={t('parameters.variety', 'Variety+')}
                                 />
                             </div>
 
@@ -621,6 +646,7 @@ export function PromptPanel() {
                                 <Switch
                                     checked={qualityToggle}
                                     onChange={(e) => setQualityToggle(e.target.checked)}
+                                    aria-label={t('parameters.qualityToggle', 'Add Quality Tags')}
                                 />
                             </div>
 
@@ -628,7 +654,7 @@ export function PromptPanel() {
                             <div className="space-y-2">
                                 <Label>{t('parameters.ucPreset', 'UC Preset')}</Label>
                                 <Select value={String(ucPreset)} onValueChange={(v) => setUcPreset(Number(v))}>
-                                    <SelectTrigger className="rounded-xl">
+                                    <SelectTrigger className="rounded-control">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -665,10 +691,11 @@ export function PromptPanel() {
                 {/* Generate Button + Counter */}
                 <div className="flex flex-wrap gap-2">
                     <Button
+                        data-testid="prompt-generate-action"
                         variant={(isGenerating || (isSceneMode && (sceneIsGenerating || sceneIsCancelling || rotationActive))) ? "destructive" : "generate"}
                         size="lg"
                         className={cn(
-                            "min-w-[min(100%,220px)] flex-1 h-auto min-h-12 rounded-xl px-4 text-base font-semibold leading-tight whitespace-normal shadow-lg transition-all duration-200",
+                            "h-12 min-w-40 flex-1 rounded-control px-4 text-sm font-semibold leading-tight whitespace-normal",
                             isConflict && "opacity-50 cursor-not-allowed"
                         )}
                         onClick={handleGenerateOrCancel}
@@ -682,17 +709,17 @@ export function PromptPanel() {
                         {isSceneMode ? (
                             sceneIsCancelling ? (
                                 <>
-                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
                                     {t('common.cancelling', '취소 중...')}
                                 </>
                             ) : rotationActive ? (
                                 <>
-                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
                                     중단하고 나중에 이어서
                                 </>
                             ) : sceneIsGenerating ? (
                                 <>
-                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
                                     {t('common.cancel', '취소')} {totalQueuedCount > 0 && `(${completedCount + 1}/${totalQueuedCount})`}
                                 </>
                             ) : (
@@ -704,12 +731,12 @@ export function PromptPanel() {
                         ) : (
                             isGenerating && isCancelled ? (
                                 <>
-                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
                                     {t('common.cancelling', '취소 중...')}
                                 </>
                             ) : isGenerating ? (
                                 <>
-                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                    <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
                                     {batchCount > 1
                                         ? `${t('generate.cancel')} (${currentBatch}/${batchCount})`
                                         : t('generate.cancel')

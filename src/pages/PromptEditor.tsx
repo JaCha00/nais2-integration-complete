@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AutocompleteTextarea } from '@/components/ui/AutocompleteTextarea'
 import { DanbooruTagVerifyDialog } from '@/components/prompt/DanbooruTagVerifyDialog'
+import { supportsLocalTaggerSidecar } from '@/platform/runtime'
 import { toast } from '@/components/ui/use-toast'
 import { cn } from '@/lib/utils'
 import {
@@ -86,19 +87,19 @@ function WindowCard({ tabId, window, index, count }: { tabId: string; window: Pr
     return (
         <div
             className={cn(
-                'rounded-lg border bg-muted/20 p-2',
-                window.excluded ? 'border-white/5 opacity-50' : 'border-white/10'
+                'rounded-control border bg-muted/20 p-2',
+                window.excluded ? 'border-border/50 opacity-50' : 'border-border'
             )}
         >
-            <div className="mb-1.5 flex items-center gap-1">
+            <div className="mb-2 grid grid-cols-[44px_minmax(0,1fr)] items-center gap-1 md:grid-cols-[36px_minmax(0,1fr)_auto]">
                 <button
                     type="button"
                     onClick={() => toggleExcluded(tabId, window.id)}
                     title={window.excluded ? t('promptEditor.includeInCopy') : t('promptEditor.excludeFromCopy')}
                     aria-label={window.excluded ? t('promptEditor.includeInCopy') : t('promptEditor.excludeFromCopy')}
-                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-9 md:w-9"
                 >
-                    {window.excluded ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5 text-primary" />}
+                    {window.excluded ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4 text-primary" />}
                 </button>
 
                 {editingTitle ? (
@@ -114,12 +115,12 @@ function WindowCard({ tabId, window, index, count }: { tabId: string; window: Pr
                                 setTitleValue(window.title)
                             }
                         }}
-                        className="h-6 flex-1 px-1.5 py-0 text-sm"
+                        className="h-11 min-w-0 px-2 py-0 text-sm md:h-9"
                     />
                 ) : (
                     <button
                         type="button"
-                        className="flex-1 truncate text-left text-sm font-semibold"
+                        className="h-11 min-w-0 truncate rounded-control px-2 text-left text-sm font-semibold hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-9"
                         onClick={() => {
                             setTitleValue(window.title)
                             setEditingTitle(true)
@@ -129,75 +130,82 @@ function WindowCard({ tabId, window, index, count }: { tabId: string; window: Pr
                     </button>
                 )}
 
-                <button
-                    type="button"
-                    onClick={() => copyText(window.text, t('promptEditor.copyWindowDescription', { title: window.title }), copyMessages)}
-                    title={t('promptEditor.copyWindow')}
-                    aria-label={t('promptEditor.copyWindow')}
-                    className="shrink-0 p-0.5 text-muted-foreground hover:text-primary"
-                >
-                    <Copy className="h-3.5 w-3.5" />
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setIsDanbooruOpen(true)}
-                    disabled={!window.text.trim()}
-                    title={t('promptEditor.verifyDanbooru', 'Danbooru 실검증')}
-                    aria-label={t('promptEditor.verifyDanbooru', 'Danbooru 실검증')}
-                    className="shrink-0 p-0.5 text-muted-foreground hover:text-primary disabled:opacity-20"
-                >
-                    <ShieldCheck className="h-3.5 w-3.5" />
-                </button>
-                <button
-                    type="button"
-                    onClick={() => moveWindow(tabId, window.id, -1)}
-                    disabled={index === 0}
-                    title={t('promptEditor.moveUp')}
-                    aria-label={t('promptEditor.moveUp')}
-                    className="shrink-0 p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20"
-                >
-                    <ChevronUp className="h-3.5 w-3.5" />
-                </button>
-                <button
-                    type="button"
-                    onClick={() => moveWindow(tabId, window.id, 1)}
-                    disabled={index === count - 1}
-                    title={t('promptEditor.moveDown')}
-                    aria-label={t('promptEditor.moveDown')}
-                    className="shrink-0 p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20"
-                >
-                    <ChevronDown className="h-3.5 w-3.5" />
-                </button>
-                <button
-                    type="button"
-                    onClick={() => deleteWindow(tabId, window.id)}
-                    title={t('promptEditor.deleteWindow')}
-                    aria-label={t('promptEditor.deleteWindow')}
-                    className="shrink-0 p-0.5 text-muted-foreground hover:text-destructive"
-                >
-                    <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                <div className="col-span-2 flex flex-wrap justify-end gap-1 border-t border-border/60 pt-1 md:col-span-1 md:border-0 md:pt-0">
+                    <button
+                        type="button"
+                        onClick={() => copyText(window.text, t('promptEditor.copyWindowDescription', { title: window.title }), copyMessages)}
+                        title={t('promptEditor.copyWindow')}
+                        aria-label={t('promptEditor.copyWindow')}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-accent hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-9 md:w-9"
+                    >
+                        <Copy className="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setIsDanbooruOpen(true)}
+                        disabled={!supportsLocalTaggerSidecar || !window.text.trim()}
+                        title={supportsLocalTaggerSidecar
+                            ? t('promptEditor.verifyDanbooru', 'Danbooru 실검증')
+                            : t('promptEditor.verifyDanbooruDesktopOnly', '데스크톱에서만 사용할 수 있습니다')}
+                        aria-label={t('promptEditor.verifyDanbooru', 'Danbooru 실검증')}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-accent hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30 md:h-9 md:w-9"
+                    >
+                        <ShieldCheck className="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => moveWindow(tabId, window.id, -1)}
+                        disabled={index === 0}
+                        title={t('promptEditor.moveUp')}
+                        aria-label={t('promptEditor.moveUp')}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30 md:h-9 md:w-9"
+                    >
+                        <ChevronUp className="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => moveWindow(tabId, window.id, 1)}
+                        disabled={index === count - 1}
+                        title={t('promptEditor.moveDown')}
+                        aria-label={t('promptEditor.moveDown')}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-30 md:h-9 md:w-9"
+                    >
+                        <ChevronDown className="h-4 w-4" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => deleteWindow(tabId, window.id)}
+                        title={t('promptEditor.deleteWindow')}
+                        aria-label={t('promptEditor.deleteWindow')}
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-9 md:w-9"
+                    >
+                        <Trash2 className="h-4 w-4" />
+                    </button>
+                </div>
             </div>
 
             <AutocompleteTextarea
                 value={window.text}
                 onChange={(event) => setWindowText(tabId, window.id, event.target.value)}
                 placeholder={t('promptEditor.promptPlaceholder')}
-                className="min-h-[64px] w-full rounded-md border border-white/10 bg-background/40 px-2 py-1.5 text-sm"
+                className="min-h-[88px] w-full rounded-control border border-border bg-canvas px-3 py-2 text-sm"
             />
-            <DanbooruTagVerifyDialog
-                open={isDanbooruOpen}
-                onOpenChange={setIsDanbooruOpen}
-                prompt={window.text}
-                onApply={(nextPrompt) => {
-                    setWindowText(tabId, window.id, nextPrompt)
-                    setIsDanbooruOpen(false)
-                    toast({
-                        title: t('promptEditor.danbooruApplied', 'Danbooru 검증 결과가 반영되었습니다'),
-                        variant: 'success',
-                    })
-                }}
-            />
+            {/* Android/iOS do not bundle the local Python sidecar, so the capability gate owns both trigger and dialog. */}
+            {supportsLocalTaggerSidecar && (
+                <DanbooruTagVerifyDialog
+                    open={isDanbooruOpen}
+                    onOpenChange={setIsDanbooruOpen}
+                    prompt={window.text}
+                    onApply={(nextPrompt) => {
+                        setWindowText(tabId, window.id, nextPrompt)
+                        setIsDanbooruOpen(false)
+                        toast({
+                            title: t('promptEditor.danbooruApplied', 'Danbooru 검증 결과가 반영되었습니다'),
+                            variant: 'success',
+                        })
+                    }}
+                />
+            )}
         </div>
     )
 }
@@ -237,18 +245,19 @@ function TabColumn({ column }: { column: 'left' | 'right' }) {
     }
 
     return (
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/50 bg-card/30">
-            <div className="flex items-center gap-1 overflow-x-auto border-b border-border/50 p-1.5">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-panel border border-border bg-card">
+            <div className="flex flex-wrap items-center gap-1 border-b border-border p-1.5">
                 {tabs.map(item => (
                     <button
                         key={item.id}
                         type="button"
                         onClick={() => setActive(column, item.id)}
+                        aria-pressed={item.id === tab?.id}
                         className={cn(
-                            'shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs transition-colors',
+                            'min-h-11 max-w-40 truncate rounded-control px-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-9',
                             item.id === tab?.id
                                 ? 'bg-primary/20 font-semibold text-primary'
-                                : 'text-muted-foreground hover:bg-white/5'
+                                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                         )}
                     >
                         {item.name}
@@ -262,7 +271,7 @@ function TabColumn({ column }: { column: 'left' | 'right' }) {
                     }}
                     title={t('promptEditor.addTab')}
                     aria-label={t('promptEditor.addTab')}
-                    className="shrink-0 p-1 text-muted-foreground hover:text-foreground"
+                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-9 md:w-9"
                 >
                     <Plus className="h-4 w-4" />
                 </button>
@@ -274,7 +283,7 @@ function TabColumn({ column }: { column: 'left' | 'right' }) {
                 </div>
             ) : (
                 <>
-                    <div className="flex items-center gap-1.5 border-b border-border/50 px-2 py-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-2 py-1.5">
                         {editingTab ? (
                             <Input
                                 autoFocus
@@ -285,41 +294,43 @@ function TabColumn({ column }: { column: 'left' | 'right' }) {
                                     if (event.key === 'Enter') commitTabName()
                                     if (event.key === 'Escape') setEditingTab(false)
                                 }}
-                                className="h-7 flex-1 text-sm"
+                                className="h-11 min-w-0 flex-[1_1_12rem] text-sm md:h-9"
                             />
                         ) : (
-                            <div className="flex-1 truncate text-sm font-semibold">{tab.name}</div>
+                            <div className="min-w-0 flex-[1_1_12rem] truncate text-sm font-semibold">{tab.name}</div>
                         )}
 
                         <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 px-2"
+                            className="h-11 w-11 px-0 md:h-9 md:w-9"
                             onClick={() => {
                                 setTabName(tab.name)
                                 setEditingTab(true)
                             }}
                             title={t('promptEditor.renameTab')}
+                            aria-label={t('promptEditor.renameTab')}
                         >
                             <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={copyAll} title={t('promptEditor.copyAll')}>
-                            <CopyCheck className="mr-1 h-3.5 w-3.5" />
-                            {t('promptEditor.copyAll')}
+                        <Button size="sm" variant="ghost" className="h-11 px-3 md:h-9" onClick={copyAll} title={t('promptEditor.copyAll')} aria-label={t('promptEditor.copyAll')}>
+                            <CopyCheck className="h-4 w-4 sm:mr-1" />
+                            <span className="hidden sm:inline">{t('promptEditor.copyAll')}</span>
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => addWindow(tab.id)} title={t('promptEditor.addWindow')}>
-                            <Plus className="h-3.5 w-3.5" />
+                        <Button size="sm" variant="ghost" className="h-11 w-11 px-0 md:h-9 md:w-9" onClick={() => addWindow(tab.id)} title={t('promptEditor.addWindow')} aria-label={t('promptEditor.addWindow')}>
+                            <Plus className="h-4 w-4" />
                         </Button>
                         <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 px-2 text-destructive hover:text-destructive"
+                            className="h-11 w-11 px-0 text-destructive hover:bg-destructive/10 hover:text-destructive md:h-9 md:w-9"
                             onClick={() => {
                                 if (window.confirm(t('promptEditor.confirmDeleteTab', { name: tab.name }))) {
                                     deleteTab(tab.id)
                                 }
                             }}
                             title={t('promptEditor.deleteTab')}
+                            aria-label={t('promptEditor.deleteTab')}
                         >
                             <Trash2 className="h-3.5 w-3.5" />
                         </Button>
@@ -358,6 +369,7 @@ export default function PromptEditor() {
     const { t } = useTranslation()
     const { tabs, addTab, importFile } = usePromptLibraryStore()
     const fileRef = useRef<HTMLInputElement>(null)
+    const [mobileColumn, setMobileColumn] = useState<'left' | 'right'>('left')
 
     const handleImport = (event: ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(event.target.files ?? [])
@@ -397,8 +409,8 @@ export default function PromptEditor() {
     }
 
     return (
-        <div className="flex h-full flex-col gap-2">
-            <div className="flex shrink-0 items-center justify-between gap-3">
+        <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
                 <h1 className="text-lg font-bold">{t('promptEditor.title')}</h1>
                 <div className="flex items-center gap-2">
                     <input
@@ -409,7 +421,7 @@ export default function PromptEditor() {
                         className="hidden"
                         onChange={handleImport}
                     />
-                    <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}>
+                    <Button size="sm" variant="outline" className="h-11" onClick={() => fileRef.current?.click()}>
                         <Upload className="mr-1 h-4 w-4" />
                         {t('promptEditor.importButton')}
                     </Button>
@@ -432,10 +444,46 @@ export default function PromptEditor() {
                     <p className="max-w-xl text-center text-xs">{t('promptEditor.emptyHelp')}</p>
                 </div>
             ) : (
-                <div className="flex min-h-0 flex-1 gap-2">
-                    <TabColumn column="left" />
-                    <TabColumn column="right" />
-                </div>
+                <>
+                    {/* The compact pane switch keeps both store-backed panes intact while exposing one editor at a time on phones. */}
+                    <div className="grid shrink-0 grid-cols-2 rounded-control border border-border bg-card p-1 md:hidden" role="tablist" aria-label={t('promptEditor.paneSelector', '편집 패널 선택')}>
+                        {(['left', 'right'] as const).map((column, index) => (
+                            <button
+                                key={column}
+                                type="button"
+                                role="tab"
+                                id={`prompt-pane-tab-${column}`}
+                                aria-controls={`prompt-pane-${column}`}
+                                aria-selected={mobileColumn === column}
+                                onClick={() => setMobileColumn(column)}
+                                className={cn(
+                                    'h-11 rounded-control px-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                    mobileColumn === column ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                                )}
+                            >
+                                {t(index === 0 ? 'promptEditor.paneA' : 'promptEditor.paneB', `패널 ${index === 0 ? 'A' : 'B'}`)}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="flex min-h-0 flex-1 gap-2">
+                        <div
+                            id="prompt-pane-left"
+                            role="tabpanel"
+                            aria-labelledby="prompt-pane-tab-left"
+                            className={cn('flex min-h-0 min-w-0 flex-1', mobileColumn !== 'left' && 'hidden md:flex')}
+                        >
+                            <TabColumn column="left" />
+                        </div>
+                        <div
+                            id="prompt-pane-right"
+                            role="tabpanel"
+                            aria-labelledby="prompt-pane-tab-right"
+                            className={cn('flex min-h-0 min-w-0 flex-1', mobileColumn !== 'right' && 'hidden md:flex')}
+                        >
+                            <TabColumn column="right" />
+                        </div>
+                    </div>
+                </>
             )}
         </div>
     )

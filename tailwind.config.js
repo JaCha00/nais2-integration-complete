@@ -5,65 +5,74 @@ export default {
         './index.html',
         './src/**/*.{js,ts,jsx,tsx}',
     ],
-    theme: {
-    	extend: {
+	theme: {
+		extend: {
     		colors: {
-    			border: 'hsl(var(--border))',
-    			input: 'hsl(var(--input))',
-    			ring: 'hsl(var(--ring))',
-    			background: 'hsl(var(--background))',
-    			foreground: 'hsl(var(--foreground))',
+				border: 'oklch(var(--border) / <alpha-value>)',
+				input: 'oklch(var(--input) / <alpha-value>)',
+				ring: 'oklch(var(--ring) / <alpha-value>)',
+				background: 'oklch(var(--background) / <alpha-value>)',
+				foreground: 'oklch(var(--foreground) / <alpha-value>)',
+				canvas: 'oklch(var(--canvas) / <alpha-value>)',
+				success: 'oklch(var(--success) / <alpha-value>)',
+				warning: 'oklch(var(--warning) / <alpha-value>)',
+				info: 'oklch(var(--info) / <alpha-value>)',
+				scrim: 'oklch(var(--scrim) / <alpha-value>)',
     			primary: {
-    				DEFAULT: 'hsl(var(--primary))',
-    				foreground: 'hsl(var(--primary-foreground))'
+					DEFAULT: 'oklch(var(--primary) / <alpha-value>)',
+					foreground: 'oklch(var(--primary-foreground) / <alpha-value>)'
     			},
     			secondary: {
-    				DEFAULT: 'hsl(var(--secondary))',
-    				foreground: 'hsl(var(--secondary-foreground))'
+					DEFAULT: 'oklch(var(--secondary) / <alpha-value>)',
+					foreground: 'oklch(var(--secondary-foreground) / <alpha-value>)'
     			},
     			destructive: {
-    				DEFAULT: 'hsl(var(--destructive))',
-    				foreground: 'hsl(var(--destructive-foreground))'
+					DEFAULT: 'oklch(var(--destructive) / <alpha-value>)',
+					foreground: 'oklch(var(--destructive-foreground) / <alpha-value>)'
     			},
     			muted: {
-    				DEFAULT: 'hsl(var(--muted))',
-    				foreground: 'hsl(var(--muted-foreground))'
+					DEFAULT: 'oklch(var(--muted) / <alpha-value>)',
+					foreground: 'oklch(var(--muted-foreground) / <alpha-value>)'
     			},
     			accent: {
-    				DEFAULT: 'hsl(var(--accent))',
-    				foreground: 'hsl(var(--accent-foreground))'
+					DEFAULT: 'oklch(var(--accent) / <alpha-value>)',
+					foreground: 'oklch(var(--accent-foreground) / <alpha-value>)'
     			},
     			popover: {
-    				DEFAULT: 'hsl(var(--popover))',
-    				foreground: 'hsl(var(--popover-foreground))'
+					DEFAULT: 'oklch(var(--popover) / <alpha-value>)',
+					foreground: 'oklch(var(--popover-foreground) / <alpha-value>)'
     			},
     			card: {
-    				DEFAULT: 'hsl(var(--card))',
-    				foreground: 'hsl(var(--card-foreground))'
+					DEFAULT: 'oklch(var(--card) / <alpha-value>)',
+					foreground: 'oklch(var(--card-foreground) / <alpha-value>)'
     			},
     			glass: {
-    				DEFAULT: 'rgba(255, 255, 255, 0.05)',
-    				border: 'rgba(255, 255, 255, 0.1)',
-    				hover: 'rgba(255, 255, 255, 0.08)'
+					DEFAULT: 'oklch(var(--card) / 0.72)',
+					border: 'oklch(var(--border) / 0.72)',
+					hover: 'oklch(var(--accent) / 0.72)'
     			},
     			chart: {
-    				'1': 'hsl(var(--chart-1))',
-    				'2': 'hsl(var(--chart-2))',
-    				'3': 'hsl(var(--chart-3))',
-    				'4': 'hsl(var(--chart-4))',
-    				'5': 'hsl(var(--chart-5))'
+					'1': 'oklch(var(--chart-1) / <alpha-value>)',
+					'2': 'oklch(var(--chart-2) / <alpha-value>)',
+					'3': 'oklch(var(--chart-3) / <alpha-value>)',
+					'4': 'oklch(var(--chart-4) / <alpha-value>)',
+					'5': 'oklch(var(--chart-5) / <alpha-value>)'
     			}
     		},
     		borderRadius: {
     			lg: 'var(--radius)',
     			md: 'calc(var(--radius) - 2px)',
-    			sm: 'calc(var(--radius) - 4px)'
+				sm: 'calc(var(--radius) - 4px)',
+				panel: 'var(--radius-panel)',
+				control: 'var(--radius-control)'
     		},
     		fontFamily: {
     			sans: [
     				'Pretendard Variable',
     				'Pretendard',
-    				'Inter',
+					'Noto Sans KR',
+					'Apple SD Gothic Neo',
+					'Malgun Gothic',
     				'-apple-system',
     				'BlinkMacSystemFont',
     				'system-ui',
@@ -71,11 +80,23 @@ export default {
     			],
     			mono: [
     				'JetBrains Mono',
-    				'Consolas',
-    				'Monaco',
-    				'monospace'
-    			]
+					'D2Coding',
+					'Consolas',
+					'monospace'
+				]
     		},
+		boxShadow: {
+			panel: '0 8px 24px oklch(var(--scrim) / 0.16)',
+			overlay: '0 16px 48px oklch(var(--scrim) / 0.28)',
+		},
+		transitionDuration: {
+			fast: '120ms',
+			standard: '180ms',
+			overlay: '240ms',
+		},
+		transitionTimingFunction: {
+			standard: 'cubic-bezier(0.2, 0, 0, 1)',
+		},
     		keyframes: {
     			'accordion-down': {
     				from: {

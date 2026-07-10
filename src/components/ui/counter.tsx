@@ -122,6 +122,7 @@ export default function Counter({
                 onClick={handleDecrement}
                 disabled={value <= min}
                 className="counter-button"
+                aria-label="Decrease count"
             >
                 <Minus className="w-3 h-3" />
             </button>
@@ -139,22 +140,25 @@ export default function Counter({
                     max={max}
                 />
             ) : (
-                <div
+                <button
+                    type="button"
                     className="counter-display"
                     style={{ fontSize, height }}
                     onClick={() => setIsEditing(true)}
                     title="Click to edit"
+                    aria-label={`Edit count, current value ${value}`}
                 >
                     {places.map((place) => (
                         <Digit key={place} place={place} value={value} height={height} />
                     ))}
-                </div>
+                </button>
             )}
             <button
                 type="button"
                 onClick={handleIncrement}
                 disabled={value >= max}
                 className="counter-button"
+                aria-label="Increase count"
             >
                 <Plus className="w-3 h-3" />
             </button>

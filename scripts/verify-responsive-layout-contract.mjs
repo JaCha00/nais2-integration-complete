@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
@@ -11,11 +11,24 @@ const VIEWPORTS = [
     { width: 1280, height: 900, minCenterWidth: 1100, sidebars: 'hidden' },
 ]
 
-const routes = ['/', '/style-lab']
+// These routes represent each responsive information architecture used by the
+// production shell: command canvas, split editor, dense grids, and settings.
+const routes = ['/', '/style-lab', '/scenes', '/prompts', '/settings']
 const port = Number(process.env.RESPONSIVE_CONTRACT_PORT || 5177)
 const baseUrl = process.env.RESPONSIVE_CONTRACT_URL || `http://127.0.0.1:${port}`
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const npxCommand = process.platform === 'win32' ? 'npx.cmd' : 'npx'
+const evidenceDir = process.env.RESPONSIVE_EVIDENCE_DIR
+    ? path.resolve(process.env.RESPONSIVE_EVIDENCE_DIR)
+    : null
+
+if (evidenceDir) {
+    mkdirSync(evidenceDir, { recursive: true })
+}
+
+function routeSlug(route) {
+    return route === '/' ? 'main' : route.slice(1).replaceAll('/', '-')
+}
 
 function quoteWindowsArg(arg) {
     if (/^[A-Za-z0-9_:./=-]+$/.test(arg)) return arg
@@ -133,7 +146,7 @@ async function main() {
                     const report = await page.evaluate(() => {
                         const main = document.querySelector('main')
                         const centerPanel = main?.parentElement
-                        const asides = Array.from(document.querySelectorAll('aside')).map((aside) => {
+                        const asides = Array.from(document.querySelectorAll('#nais2-prompt-dock, #nais2-history-dock')).map((aside) => {
                             const rect = aside.getBoundingClientRect()
                             const style = getComputedStyle(aside)
                             return {
@@ -160,12 +173,37 @@ async function main() {
                                 }
                             })
 
+                        const navTargets = Array.from(document.querySelectorAll('nav a, nav button'))
+                            .filter((target) => {
+                                const rect = target.getBoundingClientRect()
+                                const style = getComputedStyle(target)
+                                return style.display !== 'none' && rect.width > 1 && rect.height > 1
+                            })
+                            .map((target) => {
+                                const rect = target.getBoundingClientRect()
+                                return { width: rect.width, height: rect.height }
+                            })
+
+                        const mainRect = main?.getBoundingClientRect()
+                        const mainDock = document.querySelector('[data-testid="main-command-dock"]')
+                        const mainAction = document.querySelector('[data-testid="main-generate-action"]')
+                        const dockRect = mainDock?.getBoundingClientRect()
+                        const actionRect = mainAction?.getBoundingClientRect()
+
                         return {
                             bodyScrollWidth: document.body.scrollWidth,
                             documentWidth: document.documentElement.clientWidth,
+                            mainScrollWidth: main?.scrollWidth ?? 0,
+                            mainClientWidth: main?.clientWidth ?? 0,
+                            mainWithinViewport: !mainRect || (mainRect.left >= -1 && mainRect.right <= window.innerWidth + 1),
                             centerWidth: centerPanel?.getBoundingClientRect().width ?? 0,
                             visibleSidebarCount: asides.filter(aside => aside.visible).length,
                             textareas: visibleTextareas,
+                            navTargets,
+                            mainDock: dockRect && actionRect ? {
+                                bottom: dockRect.bottom,
+                                actionHeight: actionRect.height,
+                            } : null,
                         }
                     })
 
@@ -177,6 +215,19 @@ async function main() {
                         report.bodyScrollWidth <= report.documentWidth + 1,
                         `${route} @ ${viewport.width}px creates page-level horizontal overflow`,
                     )
+                    assert.ok(
+                        report.mainScrollWidth <= report.mainClientWidth + 1,
+                        `${route} @ ${viewport.width}px creates main-region horizontal overflow (${report.mainScrollWidth}px > ${report.mainClientWidth}px)`,
+                    )
+                    assert.ok(report.mainWithinViewport, `${route} @ ${viewport.width}px main region leaves the viewport`)
+
+                    assert.ok(report.navTargets.length >= 5, `${route} @ ${viewport.width}px should expose primary navigation`)
+                    for (const [index, target] of report.navTargets.entries()) {
+                        assert.ok(
+                            target.width >= 40 && target.height >= 40,
+                            `${route} @ ${viewport.width}px nav target ${index} is too small (${target.width}x${target.height})`,
+                        )
+                    }
 
                     if (viewport.sidebars === 'hidden') {
                         assert.equal(
@@ -201,6 +252,70 @@ async function main() {
                                 textarea.scrollWidth <= textarea.clientWidth + 24,
                                 `/style-lab @ ${viewport.width}px textarea ${index} has excessive horizontal internal overflow`,
                             )
+                        }
+                    }
+
+                    // Optional evidence mode keeps the contract test fast by
+                    // default while producing deterministic review artifacts
+                    // when RESPONSIVE_EVIDENCE_DIR is supplied in CI or QA.
+                    if (evidenceDir) {
+                        await page.screenshot({
+                            path: path.join(evidenceDir, `${routeSlug(route)}-${viewport.width}.png`),
+                            animations: 'disabled',
+                        })
+                    }
+
+                    if (route === '/') {
+                        assert.ok(report.mainDock, `/ @ ${viewport.width}px should expose the compact generation dock`)
+                        assert.ok(report.mainDock.bottom <= viewport.height + 1, `/ @ ${viewport.width}px command dock leaves the viewport`)
+                        assert.ok(report.mainDock.actionHeight >= 44, `/ @ ${viewport.width}px generate action is below 44px`)
+
+                        if (viewport.width === 390) {
+                            await page.locator('button[aria-controls="nais2-prompt-sheet"]').click()
+                            const promptSheet = page.locator('#nais2-prompt-sheet')
+                            await promptSheet.waitFor({ state: 'visible' })
+                            const promptReport = await promptSheet.evaluate((sheet) => {
+                                const action = sheet.querySelector('[data-testid="prompt-generate-action"]')
+                                const actionRect = action?.getBoundingClientRect()
+                                return {
+                                    scrollWidth: sheet.scrollWidth,
+                                    clientWidth: sheet.clientWidth,
+                                    actionHeight: actionRect?.height ?? 0,
+                                    actionBottom: actionRect?.bottom ?? Number.POSITIVE_INFINITY,
+                                }
+                            })
+                            assert.ok(promptReport.scrollWidth <= promptReport.clientWidth + 1, 'Prompt Sheet has horizontal overflow')
+                            assert.ok(promptReport.actionHeight >= 44, 'Prompt Sheet generate action is below 44px')
+                            assert.ok(promptReport.actionBottom <= viewport.height + 1, 'Prompt Sheet generate action is not reachable in the viewport')
+                            if (evidenceDir) {
+                                await page.screenshot({ path: path.join(evidenceDir, 'prompt-sheet-390.png'), animations: 'disabled' })
+                            }
+                            await page.keyboard.press('Escape')
+                            await promptSheet.waitFor({ state: 'hidden' })
+
+                            await page.locator('button[aria-controls="nais2-history-sheet"]').click()
+                            const historySheet = page.locator('#nais2-history-sheet')
+                            await historySheet.waitFor({ state: 'visible' })
+                            const historyReport = await historySheet.evaluate((sheet) => {
+                                const refresh = sheet.querySelector('[data-testid="history-refresh"]')
+                                const refreshRect = refresh?.getBoundingClientRect()
+                                return {
+                                    scrollWidth: sheet.scrollWidth,
+                                    clientWidth: sheet.clientWidth,
+                                    refreshWidth: refreshRect?.width ?? 0,
+                                    refreshHeight: refreshRect?.height ?? 0,
+                                }
+                            })
+                            assert.ok(historyReport.scrollWidth <= historyReport.clientWidth + 1, 'History Sheet has horizontal overflow')
+                            assert.ok(
+                                historyReport.refreshWidth >= 44 && historyReport.refreshHeight >= 44,
+                                `History refresh target is below 44px (${historyReport.refreshWidth}x${historyReport.refreshHeight})`,
+                            )
+                            if (evidenceDir) {
+                                await page.screenshot({ path: path.join(evidenceDir, 'history-sheet-390.png'), animations: 'disabled' })
+                            }
+                            await page.keyboard.press('Escape')
+                            await historySheet.waitFor({ state: 'hidden' })
                         }
                     }
                 }

@@ -1,9 +1,15 @@
-import { NavLink, useLocation } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { useTranslation } from 'react-i18next'
-import { cn } from '@/lib/utils'
-import { LucideIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
+import { motion, useReducedMotion } from 'framer-motion'
+import { useTranslation } from 'react-i18next'
+import { Ellipsis, LucideIcon } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface NavItem {
     path: string
@@ -16,10 +22,19 @@ interface AnimatedNavBarProps {
     items: NavItem[]
 }
 
+const MOBILE_PRIMARY_PATHS = new Set(['/', '/scenes', '/tools', '/library'])
+
+function isRouteActive(pathname: string, itemPath: string) {
+    return itemPath === '/'
+        ? pathname === '/'
+        : pathname === itemPath || pathname.startsWith(`${itemPath}/`)
+}
+
 export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
     const { t } = useTranslation()
     const location = useLocation()
     const navRef = useRef<HTMLElement>(null)
+    const reduceMotion = useReducedMotion()
     const [{ isCompact, isTiny }, setNavigationMode] = useState(() => ({
         isCompact: true,
         isTiny: window.innerWidth < 480,
@@ -38,7 +53,8 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
             rafId = requestAnimationFrame(() => {
                 const availableWidth = measuredNode?.getBoundingClientRect().width ?? window.innerWidth
                 const nextMode = {
-                    isCompact: window.innerWidth < 1382 || availableWidth < 760,
+                    // Labels are reserved for a genuinely roomy center panel; icons always fit from sm upward.
+                    isCompact: window.innerWidth < 1536 || availableWidth < 1200,
                     isTiny: availableWidth < 320 || window.innerWidth < 480,
                 }
 
@@ -72,38 +88,111 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
         }
     }, [])
 
+    const primaryItems = items.filter(item => MOBILE_PRIMARY_PATHS.has(item.path))
+    const overflowItems = items.filter(item => !MOBILE_PRIMARY_PATHS.has(item.path))
+    const moreLabel = t('nav.more', 'More')
+    const overflowIsActive = overflowItems.some(item => isRouteActive(location.pathname, item.path))
+
+    const renderItem = (item: NavItem, layoutId: string, showLabel: boolean) => {
+        const isActive = isRouteActive(location.pathname, item.path)
+        const label = t(item.labelKey, item.fallbackLabel ?? item.labelKey)
+
+        return (
+            <NavLink
+                key={item.path}
+                to={item.path}
+                title={!showLabel ? label : undefined}
+                aria-label={label}
+                aria-current={isActive ? 'page' : undefined}
+                className={cn(
+                    'relative z-0 inline-flex h-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control border border-transparent text-sm font-medium transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
+                    isCompact ? (isTiny ? "h-10 w-10 p-0" : 'w-11 p-2') : 'px-3 py-2',
+                    isActive
+                        ? 'text-primary'
+                        : 'text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground'
+                )}
+            >
+                {isActive && (
+                    <motion.span
+                        layoutId={layoutId}
+                        className="absolute inset-0 -z-10 rounded-control border border-primary/30 bg-accent"
+                        transition={reduceMotion
+                            ? { duration: 0 }
+                            : { type: 'tween', duration: 0.18, ease: [0.2, 0, 0, 1] }}
+                    />
+                )}
+                <span className="relative z-10 flex min-w-0 items-center gap-2">
+                    <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                    {showLabel && <span className="truncate">{label}</span>}
+                </span>
+            </NavLink>
+        )
+    }
+
     return (
-        <nav ref={navRef} className="flex w-full min-w-0 items-center justify-center gap-1 overflow-x-auto p-1">
-            {items.map((item) => {
-                const isActive = location.pathname === item.path
-                const label = t(item.labelKey, item.fallbackLabel ?? item.labelKey)
-                return (
-                    <NavLink
-                        key={item.path}
-                        to={item.path}
-                        title={isCompact ? label : undefined}
-                        className={cn(
-                            "relative z-0 shrink-0 rounded-full text-sm font-medium transition-colors",
-                            isCompact ? (isTiny ? "p-1.5" : "p-2") : "px-4 py-2",
-                            isActive
-                                ? "text-foreground"
-                                : "text-muted-foreground hover:text-foreground/80"
-                        )}
+        <nav
+            ref={navRef}
+            aria-label={t('nav.navigation', 'Primary navigation')}
+            className={cn(
+                'flex w-full min-w-0 items-center overflow-hidden',
+                isTiny ? "justify-start" : "justify-center",
+            )}
+        >
+            {/* DESIGN.md keeps compact navigation deterministic: four work routes plus one overflow at <640px. */}
+            <div className="flex w-full min-w-0 items-center justify-between gap-0 sm:hidden">
+                {primaryItems.map(item => renderItem(item, 'activeTab-mobile', false))}
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <button
+                            type="button"
+                            aria-label={moreLabel}
+                            title={moreLabel}
+                            className={cn(
+                                'inline-flex h-11 min-h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-control border text-sm transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
+                                overflowIsActive
+                                    ? 'border-primary/30 bg-accent text-primary'
+                                    : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground'
+                            )}
+                        >
+                            <Ellipsis className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                        align="end"
+                        sideOffset={8}
+                        className="w-56 rounded-panel border-border bg-popover p-1 text-popover-foreground shadow-panel"
                     >
-                        {isActive && (
-                            <motion.div
-                                layoutId="activeTab"
-                                className="absolute inset-0 bg-foreground/10 backdrop-blur-md rounded-full border border-foreground/10 shadow-sm -z-10"
-                                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                            />
-                        )}
-                        <span className="relative z-10 flex min-w-0 items-center gap-2">
-                            <item.icon className="h-4 w-4 shrink-0" />
-                            {!isCompact && <span className="truncate">{label}</span>}
-                        </span>
-                    </NavLink>
-                )
-            })}
+                        {overflowItems.map(item => {
+                            const isActive = isRouteActive(location.pathname, item.path)
+                            const label = t(item.labelKey, item.fallbackLabel ?? item.labelKey)
+
+                            return (
+                                <DropdownMenuItem
+                                    key={item.path}
+                                    asChild
+                                    className={cn(
+                                        'h-11 rounded-control px-3 focus:bg-accent focus:text-accent-foreground',
+                                        isActive && 'bg-accent text-primary'
+                                    )}
+                                >
+                                    <NavLink
+                                        to={item.path}
+                                        aria-current={isActive ? 'page' : undefined}
+                                        className="flex w-full items-center gap-3"
+                                    >
+                                        <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                                        <span className="truncate">{label}</span>
+                                    </NavLink>
+                                </DropdownMenuItem>
+                            )
+                        })}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+
+            <div className="hidden w-full min-w-0 items-center justify-center gap-1 sm:flex">
+                {items.map(item => renderItem(item, 'activeTab-desktop', !isCompact))}
+            </div>
         </nav>
     )
 }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Fragment, KeyboardEvent, useCallback } from 'react'
+import { useState, useRef, useEffect, useId, Fragment, KeyboardEvent, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import Editor from 'react-simple-code-editor'
 import { getCaretCoordinates } from '@/utils/caret-coords'
@@ -23,11 +23,13 @@ interface AutocompleteTextareaProps {
     placeholder?: string
     disabled?: boolean
     readOnly?: boolean
+    id?: string
+    ariaLabel?: string
 }
 
 // Single source of truth for Typography to ensure Textarea and Pre match perfectly.
 const TYPOGRAPHY = {
-    fontFamily: '"Inter", "Pretendard Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    fontFamily: '"Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif',
     lineHeight: '1.5',
     letterSpacing: 'normal',
     fontVariantLigatures: 'none',
@@ -41,8 +43,12 @@ export function AutocompleteTextarea({
     maxSuggestions = 15,
     style, // mainly used for fontSize
     placeholder,
+    id,
+    ariaLabel,
     ...props
 }: AutocompleteTextareaProps) {
+    const generatedId = useId()
+    const editorId = id ?? `prompt-editor-${generatedId.replace(/:/g, '')}`
     // --- Refs ---
     const textareaRef = useRef<HTMLTextAreaElement | null>(null)
     const containerRef = useRef<HTMLDivElement>(null) // The scrolling container
@@ -126,8 +132,10 @@ export function AutocompleteTextarea({
                 const caret = getCaretCoordinates(el, pos)
 
                 setCoords({
-                    top: rect.top + window.scrollY + caret.top + 24,
-                    left: rect.left + window.scrollX + caret.left
+                    // The list is position:fixed, so coordinates must stay in
+                    // viewport space. Clamping prevents mobile sheet overflow.
+                    top: Math.min(Math.max(8, rect.top + caret.top + 24), Math.max(8, window.innerHeight - 160)),
+                    left: Math.min(Math.max(8, rect.left + caret.left), Math.max(8, window.innerWidth - 264))
                 })
                 setIsVisible(true)
             } else {
@@ -190,8 +198,8 @@ export function AutocompleteTextarea({
             const caret = getCaretCoordinates(el, pos)
 
             setCoords({
-                top: rect.top + window.scrollY + caret.top + 24,
-                left: rect.left + window.scrollX + caret.left
+                top: Math.min(Math.max(8, rect.top + caret.top + 24), Math.max(8, window.innerHeight - 160)),
+                left: Math.min(Math.max(8, rect.left + caret.left), Math.max(8, window.innerWidth - 264))
             })
             setIsVisible(true)
         } else {
@@ -423,7 +431,7 @@ export function AutocompleteTextarea({
                     if (isComment) {
                         return (
                             <Fragment key={lineIndex}>
-                                <span className="bg-muted-foreground/20 text-muted-foreground rounded-[2px]">{line}</span>
+                                <span className="rounded-sm bg-muted text-muted-foreground">{line}</span>
                                 {!isLastLine && '\n'}
                             </Fragment>
                         )
@@ -443,10 +451,10 @@ export function AutocompleteTextarea({
                                 let styleClass = ""
                                 if (/^-?[\d.]+::.*::$/.test(part)) {
                                     styleClass = part.startsWith('-')
-                                        ? "bg-sky-500/30 rounded-[2px]"
-                                        : "bg-pink-500/30 rounded-[2px]"
+                                        ? "rounded-sm bg-info/20"
+                                        : "rounded-sm bg-destructive/20"
                                 } else if (/^<[^>]+>$/.test(part)) {
-                                    styleClass = "bg-green-500/30 rounded-[2px]"
+                                    styleClass = "rounded-sm bg-success/20"
                                 }
                                 return <span key={i} className={styleClass}>{part}</span>
                             })}
@@ -465,14 +473,14 @@ export function AutocompleteTextarea({
     return (
         <div
             className={cn(
-                "prompt-editor-wrapper relative w-full h-full flex flex-col border rounded-md border-input bg-transparent overflow-hidden group focus-within:ring-1 focus-within:ring-ring",
+                "prompt-editor-wrapper group relative flex h-full w-full flex-col overflow-hidden rounded-control border border-input bg-canvas focus-within:ring-2 focus-within:ring-ring",
                 className
             )}
         >
             <style>{`
                 .prompt-editor-wrapper pre,
                 .prompt-editor-wrapper textarea {
-                    font-family: "Inter", "Pretendard Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+                    font-family: "Pretendard", "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif !important;
                     line-height: 1.5 !important;
                     font-size: inherit !important;
                     letter-spacing: normal !important;
@@ -500,7 +508,7 @@ export function AutocompleteTextarea({
                     onValueChange={handleValueChange}
                     highlight={renderHighlights}
                     padding={12}
-                    textareaId="prompt-editor"
+                    textareaId={editorId}
 
                     // Core Editor Style
                     style={{
@@ -531,6 +539,7 @@ export function AutocompleteTextarea({
                     onKeyDown={handleKeyDown}
 
                     placeholder={placeholder}
+                    aria-label={ariaLabel ?? placeholder}
                     readOnly={props.readOnly}
                     disabled={props.disabled}
                     {...props}
@@ -541,11 +550,13 @@ export function AutocompleteTextarea({
             {isVisible && suggestions.length > 0 && createPortal(
                 <div
                     ref={listRef}
-                    className="fixed z-[9999] w-64 bg-popover/95 backdrop-blur-md text-popover-foreground rounded-lg border border-border shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+                    className="fixed z-[9999] w-64 overflow-hidden rounded-panel border border-border bg-popover text-popover-foreground shadow-overlay motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95"
+                    role="listbox"
+                    aria-label="Prompt suggestions"
                     style={{
                         top: coords.top,
                         left: coords.left,
-                        maxHeight: '300px',
+                        maxHeight: `${Math.min(300, Math.max(120, window.innerHeight - coords.top - 8))}px`,
                         overflowY: 'auto'
                     }}
                 >
@@ -553,8 +564,10 @@ export function AutocompleteTextarea({
                         {suggestions.map((item, index) => (
                             <div
                                 key={item.value + index}
+                                role="option"
+                                aria-selected={index === selectedIndex}
                                 className={cn(
-                                    "flex items-center justify-between px-3 py-2 text-sm rounded-md cursor-pointer select-none transition-colors",
+                                    "flex min-h-11 cursor-pointer select-none items-center justify-between rounded-control px-3 py-2 text-sm transition-colors",
                                     index === selectedIndex ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                                 )}
                                 onMouseDown={(e) => {
@@ -566,14 +579,14 @@ export function AutocompleteTextarea({
                                     <span className="truncate font-semibold">
                                         {item.type === 'fragment' ? `<${item.label}>` : item.label}
                                     </span>
-                                    <div className="flex items-center gap-2 text-[10px] opacity-80">
+                                    <div className="flex items-center gap-2 text-[11px] opacity-80">
                                         <span className={cn(
                                             "uppercase tracking-wider font-bold",
-                                            item.type === 'fragment' ? "text-green-300" :
-                                                item.type === 'artist' ? "text-yellow-300" :
-                                                    item.type === 'character' ? "text-green-300" :
-                                                        item.type === 'copyright' ? "text-fuchsia-300" :
-                                                            "text-blue-300"
+                                             item.type === 'fragment' ? "text-success" :
+                                                item.type === 'artist' ? "text-warning" :
+                                                    item.type === 'character' ? "text-success" :
+                                                        item.type === 'copyright' ? "text-destructive" :
+                                                            "text-info"
                                         )}>
                                             {item.type}
                                         </span>

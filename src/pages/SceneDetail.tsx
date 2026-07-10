@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { ResolutionSelector, Resolution } from '@/components/ui/ResolutionSelector'
 import {
@@ -29,12 +29,13 @@ import { openPath } from '@tauri-apps/plugin-opener'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
 import { ImageReferenceDialog } from '@/components/metadata/ImageReferenceDialog'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
-import { pictureDir, join } from '@tauri-apps/api/path'
+import { join } from '@tauri-apps/api/path'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { exists, readDir, readFile, remove } from '@tauri-apps/plugin-fs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from '@/components/ui/use-toast'
 import { sanitizePathComponent } from '@/lib/scene-output-path'
+import { getMediaStorageRoot, shouldUseAbsoluteMediaPath } from '@/platform/storage'
 
 const getParentDirectoryPath = (path: string): string | null => {
     if (!path || path.startsWith('data:')) return null
@@ -124,6 +125,8 @@ export default function SceneDetail() {
     const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
     const [viewerImageSrc, setViewerImageSrc] = useState<string | null>(null)
     const [viewerImage, setViewerImage] = useState<SceneImage | null>(null)  // Current image object for context menu
+    const viewerDialogRef = useRef<HTMLDivElement>(null)
+    const viewerReturnFocusRef = useRef<HTMLElement | null>(null)
     const streamingSceneId = useSceneStore(s => s.streamingSceneId)
     const streamingImage = useSceneStore(s => s.streamingSceneId === sceneId ? s.streamingImage : null)
     const streamingProgress = useSceneStore(s => s.streamingSceneId === sceneId ? s.streamingProgress : 0)
@@ -139,12 +142,20 @@ export default function SceneDetail() {
 
     const nav = useNavigate()
 
+    const closeImageViewer = useCallback(() => {
+        setViewerImageSrc(null)
+        setViewerImage(null)
+
+        const returnFocusTarget = viewerReturnFocusRef.current
+        window.requestAnimationFrame(() => returnFocusTarget?.focus())
+    }, [])
+
     // ESC key handler for closing viewer or navigating back
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
                 if (viewerImageSrc) {
-                    setViewerImageSrc(null)
+                    closeImageViewer()
                 } else {
                     // Navigate back to scene list
                     nav('/scenes')
@@ -153,7 +164,14 @@ export default function SceneDetail() {
         }
         window.addEventListener('keydown', handleEsc)
         return () => window.removeEventListener('keydown', handleEsc)
-    }, [viewerImageSrc, nav])
+    }, [closeImageViewer, viewerImageSrc, nav])
+
+    useEffect(() => {
+        if (!viewerImageSrc) return
+
+        const frame = window.requestAnimationFrame(() => viewerDialogRef.current?.focus())
+        return () => window.cancelAnimationFrame(frame)
+    }, [viewerImageSrc])
 
     // Memory cleanup on unmount - release streaming data when leaving scene detail
     // This prevents OOM when switching between modes (Issue #6)
@@ -263,6 +281,11 @@ export default function SceneDetail() {
         setIsEditingName(false)
     }
 
+    const handleCancelNameEdit = () => {
+        setEditName(scene.name)
+        setIsEditingName(false)
+    }
+
     const handleGenerate = () => {
         if (!activePresetId || !scene) return
 
@@ -290,9 +313,9 @@ export default function SceneDetail() {
             const safePresetName = sanitizePathComponent(currentPreset?.name || 'Default', 'Default')
             const safeSceneName = sanitizePathComponent(scene.name || 'Untitled_Scene', 'Untitled_Scene')
             const { sceneSavePath, useAbsoluteScenePath } = useSettingsStore.getState()
-            const sceneRootPath = useAbsoluteScenePath && sceneSavePath
+            const sceneRootPath = shouldUseAbsoluteMediaPath(useAbsoluteScenePath) && sceneSavePath
                 ? sceneSavePath
-                : await join(await pictureDir(), sceneSavePath || 'NAIS_Scene')
+                : await join(await getMediaStorageRoot(), sceneSavePath || 'NAIS_Scene')
             const presetPath = await join(sceneRootPath, safePresetName)
             const folderPath = await findSceneFolderUnderPreset(presetPath, safeSceneName)
 
@@ -321,125 +344,167 @@ export default function SceneDetail() {
         : scene.images
 
     return (
-        <div className="flex flex-col h-full gap-4">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <Tip content={t('actions.openFolder', '생성된 이미지 폴더 열기')}>
-                        <Button variant="ghost" size="icon" className="rounded-xl" onClick={handleOpenFolder}>
-                            <FolderOpen className="h-5 w-5 text-muted-foreground" />
-                        </Button>
-                    </Tip>
+        <div className="flex h-full min-h-0 min-w-0 flex-col gap-3">
+            {/* DESIGN.md: mobile keeps identity, generation, and queue controls in three scan-friendly rows. */}
+            <header className="flex min-w-0 shrink-0 flex-col gap-2 border-b border-border pb-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex min-w-0 items-center gap-1">
                     <Tip content={t('actions.back', '씬 목록으로 돌아가기')}>
-                        <Button variant="ghost" size="icon" className="rounded-xl" onClick={handleBack}>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-11 w-11 shrink-0 rounded-control lg:h-9 lg:w-9"
+                            aria-label={t('actions.back', '씬 목록으로 돌아가기')}
+                            onClick={handleBack}
+                        >
                             <ChevronLeft className="h-5 w-5" />
                         </Button>
                     </Tip>
-                    <div>
-                        {isEditingName ? (
-                            <div className="flex items-center gap-2">
-                                <Input
-                                    value={editName}
-                                    onChange={(e) => setEditName(e.target.value)}
-                                    className="text-2xl font-bold h-9 w-64 rounded-lg"
-                                    autoFocus
-                                    onBlur={handleSaveName}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') handleSaveName()
-                                        if (e.key === 'Escape') setIsEditingName(false)
-                                    }}
-                                />
-                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={handleSaveName}>
-                                    <Check className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => setIsEditingName(false)}>
-                                    <X className="h-4 w-4" />
-                                </Button>
+                    <Tip content={t('actions.openFolder', '생성된 이미지 폴더 열기')}>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-11 w-11 shrink-0 rounded-control lg:h-9 lg:w-9"
+                            aria-label={t('actions.openFolder', '생성된 이미지 폴더 열기')}
+                            onClick={handleOpenFolder}
+                        >
+                            <FolderOpen className="h-5 w-5 text-muted-foreground" />
+                        </Button>
+                    </Tip>
+
+                    {isEditingName ? (
+                        <div
+                            className="flex min-w-0 flex-1 items-center gap-1"
+                            onBlur={(event) => {
+                                const nextTarget = event.relatedTarget
+                                if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+                                    handleSaveName()
+                                }
+                            }}
+                        >
+                            <Input
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                                className="h-11 min-w-0 flex-1 rounded-control text-lg font-semibold lg:h-9"
+                                aria-label={t('scene.sceneName', '씬 이름')}
+                                autoFocus
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveName()
+                                    if (e.key === 'Escape') handleCancelNameEdit()
+                                }}
+                            />
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-11 w-11 shrink-0 rounded-control lg:h-9 lg:w-9"
+                                aria-label={t('common.save', '저장')}
+                                onClick={handleSaveName}
+                            >
+                                <Check className="h-4 w-4" />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-11 w-11 shrink-0 rounded-control lg:h-9 lg:w-9"
+                                aria-label={t('common.cancel', '취소')}
+                                onClick={handleCancelNameEdit}
+                            >
+                                <X className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="flex min-w-0 flex-1 items-center gap-1">
+                            <div className="min-w-0 flex-1">
+                                <h1 className="truncate text-lg font-semibold" title={scene.name}>{scene.name}</h1>
+                                <p className="hidden truncate text-xs text-muted-foreground xl:block">{t('scene.editPrompt')}</p>
                             </div>
-                        ) : (
-                            <div className="flex items-center gap-2">
-                                <h1 className="text-2xl font-bold">{scene.name}</h1>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg opacity-50 hover:opacity-100" onClick={() => setIsEditingName(true)}>
-                                    <Pencil className="h-4 w-4" />
-                                </Button>
-                            </div>
-                        )}
-                        <p className="text-muted-foreground text-sm">{t('scene.editPrompt')}</p>
-                    </div>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-11 w-11 shrink-0 rounded-control lg:h-9 lg:w-9"
+                                aria-label={t('scene.rename', '이름 변경')}
+                                onClick={() => setIsEditingName(true)}
+                            >
+                                <Pencil className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    )}
                 </div>
-                <div className="flex items-center gap-3">
-                    {/* Resolution Settings */}
-                    <div className="w-[220px]">
+
+                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 lg:flex lg:items-center">
+                    <div className="min-w-0 [&_button]:h-11 [&_button]:rounded-control lg:w-52 lg:[&_button]:h-9">
                         <ResolutionSelector
                             value={currentResolution}
                             onChange={handleResolutionChange}
                         />
                     </div>
-
-                    <div className="w-px h-8 bg-border mx-2" />
-
-                    {/* Queue Controls */}
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-muted/50">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => decrementQueue(activePresetId, scene.id)}
-                            disabled={scene.queueCount === 0}
-                        >
-                            <Minus className="h-3 w-3" />
-                        </Button>
-                        <span className="text-sm font-medium w-8 text-center">{scene.queueCount}</span>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => incrementQueue(activePresetId, scene.id)}
-                        >
-                            <Plus className="h-3 w-3" />
-                        </Button>
-                    </div>
-
-
-                    <Button size="sm" className="rounded-xl" onClick={handleGenerate}>
+                    <Button className="h-11 shrink-0 rounded-control px-3 lg:h-9" onClick={handleGenerate}>
                         <Play className="mr-2 h-4 w-4" />
                         {t('generate.button')}
                     </Button>
-                </div>
-            </div >
 
-            {/* Scene Prompt - Clean Style like PromptPanel */}
-            < div className="flex flex-col min-h-[140px] shrink-0" >
-                <label className="text-xs font-medium text-muted-foreground mb-1">{t('scene.scenePrompt')}</label>
+                    <div className="col-span-2 flex min-w-0 items-center justify-between rounded-control border border-border bg-card px-1 lg:col-span-1 lg:gap-1">
+                        <span className="px-2 text-xs font-medium text-muted-foreground lg:sr-only">
+                            {t('scene.queue', '대기열')}
+                        </span>
+                        <div className="flex items-center">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-11 w-11 rounded-control lg:h-9 lg:w-9"
+                                aria-label={t('scene.decrementQueue', '대기열 감소')}
+                                onClick={() => decrementQueue(activePresetId, scene.id)}
+                                disabled={scene.queueCount === 0}
+                            >
+                                <Minus className="h-4 w-4" />
+                            </Button>
+                            <span className="w-10 text-center text-sm font-semibold tabular-nums" aria-live="polite">
+                                {scene.queueCount}
+                            </span>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-11 w-11 rounded-control lg:h-9 lg:w-9"
+                                aria-label={t('scene.incrementQueue', '대기열 증가')}
+                                onClick={() => incrementQueue(activePresetId, scene.id)}
+                            >
+                                <Plus className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <div className="flex min-h-[140px] min-w-0 shrink-0 flex-col">
+                <label className="mb-1 text-xs font-medium text-muted-foreground">{t('scene.scenePrompt')}</label>
                 <AutocompleteTextarea
                     placeholder=""
-                    className="flex-1 min-h-0 resize-none rounded-xl"
+                    className="min-h-0 min-w-0 flex-1 resize-none rounded-control"
                     style={{ fontSize: `${promptFontSize}px` }}
                     value={localPrompt}
                     onChange={(e: any) => setLocalPrompt(e.target.value)}
                 />
-            </div >
+            </div>
 
-            {/* Generated Images - Large Section */}
-            < Card glass className="flex-1 overflow-hidden flex flex-col mt-2" >
-                <CardHeader className="py-3 flex-row items-center justify-between shrink-0">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                        {t('scene.generatedImages')}
-                        <span className="text-muted-foreground font-normal">({scene.images.length})</span>
+            <Card className="mt-1 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-panel border-border bg-card shadow-none">
+                <CardHeader className="min-w-0 shrink-0 gap-2 border-b border-border p-3 sm:p-4">
+                    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                        <CardTitle className="min-w-0 truncate text-sm">{t('scene.generatedImages')}</CardTitle>
+                        <span className="shrink-0 text-xs font-normal text-muted-foreground">({scene.images.length})</span>
                         {isEditMode && selectedImageIds.size > 0 && (
-                            <span className="text-primary font-medium ml-2">
+                            <span className="text-xs font-medium text-primary">
                                 {t('scene.selectedCount', '{{count}}개 선택됨', { count: selectedImageIds.size })}
                             </span>
                         )}
-                    </CardTitle>
-                    <div className="flex items-center gap-2">
+                    </div>
+                    {/* DESIGN.md: mobile gallery actions wrap below the title instead of competing for one line. */}
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
                         {isEditMode ? (
                             <>
                                 {/* Select All / Deselect All */}
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-7 rounded-lg gap-1"
+                                    className="h-11 rounded-control px-3 lg:h-9"
                                     onClick={() => {
                                         if (selectedImageIds.size === scene.images.length) {
                                             setSelectedImageIds(new Set())
@@ -449,9 +514,9 @@ export default function SceneDetail() {
                                     }}
                                 >
                                     {selectedImageIds.size === scene.images.length ? (
-                                        <Square className="h-3 w-3" />
+                                        <Square className="h-4 w-4" />
                                     ) : (
-                                        <CheckSquare className="h-3 w-3" />
+                                        <CheckSquare className="h-4 w-4" />
                                     )}
                                     {selectedImageIds.size === scene.images.length ? t('scene.deselectAll', '선택 해제') : t('scene.selectAll', '전체 선택')}
                                 </Button>
@@ -459,7 +524,7 @@ export default function SceneDetail() {
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-7 rounded-lg gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    className="h-11 rounded-control px-3 text-destructive hover:bg-destructive/10 hover:text-destructive lg:h-9"
                                     onClick={async () => {
                                         if (activePresetId && sceneId && selectedImageIds.size > 0) {
                                             for (const imgId of selectedImageIds) {
@@ -475,40 +540,39 @@ export default function SceneDetail() {
                                     }}
                                     disabled={selectedImageIds.size === 0}
                                 >
-                                    <Trash2 className="h-3 w-3" />
+                                    <Trash2 className="h-4 w-4" />
                                     {t('scene.deleteSelected', '선택 삭제')}
                                 </Button>
                                 {/* Exit Edit Mode */}
                                 <Button
                                     variant="default"
                                     size="sm"
-                                    className="h-7 rounded-lg gap-1"
+                                    className="h-11 rounded-control px-3 lg:h-9"
                                     onClick={() => {
                                         setIsEditMode(false)
                                         setSelectedImageIds(new Set())
                                     }}
                                 >
-                                    <Check className="h-3 w-3" />
+                                    <Check className="h-4 w-4" />
                                     {t('scene.exitEditMode', '편집 종료')}
                                 </Button>
                             </>
                         ) : (
                             <>
                                 {/* Edit Mode Button */}
-                                <Tip content={t('scene.editMode', '편집 모드')}>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-7 rounded-lg gap-1"
-                                        onClick={() => setIsEditMode(true)}
-                                    >
-                                        <Pencil className="h-3 w-3" />
-                                    </Button>
-                                </Tip>
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-7 rounded-lg gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    className="h-11 rounded-control px-3 lg:h-9"
+                                    onClick={() => setIsEditMode(true)}
+                                >
+                                    <Pencil className="h-4 w-4" />
+                                    {t('scene.editMode', '편집 모드')}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-11 rounded-control px-3 text-destructive hover:bg-destructive/10 hover:text-destructive lg:h-9"
                                     onClick={async () => {
                                         if (activePresetId && sceneId) {
                                             const { count, paths } = deleteNonFavoriteImages(activePresetId, sceneId)
@@ -527,36 +591,36 @@ export default function SceneDetail() {
                                     }}
                                     disabled={scene.images.filter(img => !img.isFavorite).length === 0}
                                 >
-                                    <Trash2 className="h-3 w-3" />
+                                    <Trash2 className="h-4 w-4" />
                                     {t('scene.deleteNonFavorites', '즐겨찾기 제외 삭제')}
                                 </Button>
                                 <Button
                                     variant={showFavoritesOnly ? "default" : "outline"}
                                     size="sm"
-                                    className="h-7 rounded-lg gap-1"
+                                    className="h-11 rounded-control px-3 lg:h-9"
                                     onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
                                 >
-                                    <Star className={`h-3 w-3 ${showFavoritesOnly ? 'fill-current' : ''}`} />
+                                    <Star className={`h-4 w-4 ${showFavoritesOnly ? 'fill-current' : ''}`} />
                                     {t('scene.favoritesOnly', '즐겨찾기')}
                                 </Button>
                             </>
                         )}
                     </div>
                 </CardHeader>
-                <CardContent className="flex-1 overflow-y-auto custom-scrollbar p-4">
+                <CardContent className="custom-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto p-3 sm:p-4">
                     {sortedImages.length === 0 && !isStreaming ? (
                         <div className="h-full flex flex-col items-center justify-center text-muted-foreground opacity-50">
                             <ImageIcon className="h-16 w-16 mb-4 stroke-1" />
                             <p>{t('scene.noImages', '생성된 이미지가 없습니다')}</p>
                         </div>
                     ) : (
-                        <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+                        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fill,minmax(min(100%,280px),1fr))]">
                             {/* Streaming Card Slot */}
                             {isStreaming && streamingImage && (
-                                <div className={cn("rounded-xl overflow-hidden bg-muted/30 relative border border-primary/50 shadow-[0_0_15px_rgba(59,130,246,0.5)]", thumbnailLayout === 'vertical' ? "aspect-[2/3]" : "aspect-[3/2]")}>
+                                <div className={cn("relative overflow-hidden rounded-panel border border-primary bg-muted/30", thumbnailLayout === 'vertical' ? "aspect-[2/3]" : "aspect-[3/2]")}>
                                     <img src={streamingImage} alt="Generating..." className="w-full h-full object-cover animate-pulse opacity-80" />
-                                    <div className="absolute inset-x-0 bottom-0 h-1 bg-gray-500/50">
-                                        <div className="h-full bg-white transition-all duration-300 shadow-[0_0_8px_rgba(255,255,255,0.8)]" style={{ width: `${streamingProgress * 100}%` }} />
+                                    <div className="absolute inset-x-0 bottom-0 h-1 bg-muted">
+                                        <div className="h-full bg-primary transition-[width] duration-300" style={{ width: `${streamingProgress * 100}%` }} />
                                     </div>
                                 </div>
                             )}
@@ -622,6 +686,9 @@ export default function SceneDetail() {
                                         setInpaintDialogOpen(true)
                                     }}
                                     onImageClick={(imgSrc) => {
+                                        viewerReturnFocusRef.current = document.activeElement instanceof HTMLElement
+                                            ? document.activeElement
+                                            : null
                                         setViewerImageSrc(imgSrc)
                                         setViewerImage(image)
                                     }}
@@ -630,7 +697,7 @@ export default function SceneDetail() {
                         </div>
                     )}
                 </CardContent>
-            </Card >
+            </Card>
 
             <MetadataDialog
                 open={metadataDialogOpen}
@@ -656,13 +723,29 @@ export default function SceneDetail() {
                 sourceImage={selectedImageForInpaint}
             />
 
-            {/* Full-Screen Image Viewer Overlay with Context Menu */}
+            {/* DESIGN.md: fixed viewers honor every safe-area edge and keep a 44px escape target. */}
             {viewerImageSrc && viewerImage && (
                 <div
-                    className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center cursor-pointer"
-                    onClick={() => {
-                        setViewerImageSrc(null)
-                        setViewerImage(null)
+                    ref={viewerDialogRef}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={t('scene.imageViewer', '이미지 뷰어')}
+                    tabIndex={-1}
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-3 outline-none"
+                    style={{
+                        paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+                        paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
+                        paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
+                        paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
+                    }}
+                    onClick={(event) => {
+                        if (event.target === event.currentTarget) closeImageViewer()
+                    }}
+                    onKeyDown={(event) => {
+                        if (event.key === 'Tab') {
+                            event.preventDefault()
+                            event.currentTarget.querySelector<HTMLButtonElement>('[data-viewer-close]')?.focus()
+                        }
                     }}
                 >
                     <SceneImageContextMenu
@@ -671,8 +754,7 @@ export default function SceneDetail() {
                             if (activePresetId && scene) {
                                 deleteImage(activePresetId, scene.id, viewerImage.id)
                             }
-                            setViewerImageSrc(null)
-                            setViewerImage(null)
+                            closeImageViewer()
                         }}
                         onAddRef={async () => {
                             try {
@@ -715,8 +797,8 @@ export default function SceneDetail() {
                     >
                         <img
                             src={viewerImageSrc}
-                            alt="Full view"
-                            className="max-w-[90vw] max-h-[90vh] object-contain cursor-default"
+                            alt={t('scene.fullImageView', '전체 이미지 보기')}
+                            className="max-h-full max-w-full cursor-default object-contain"
                             onClick={(e) => e.stopPropagation()}
                             onContextMenu={(e) => e.stopPropagation()}
                         />
@@ -724,17 +806,20 @@ export default function SceneDetail() {
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 rounded-lg h-10 w-10"
-                        onClick={() => {
-                            setViewerImageSrc(null)
-                            setViewerImage(null)
+                        data-viewer-close
+                        className="absolute h-11 w-11 rounded-control border border-border bg-card text-foreground hover:bg-accent"
+                        style={{
+                            top: 'max(0.75rem, env(safe-area-inset-top))',
+                            right: 'max(0.75rem, env(safe-area-inset-right))',
                         }}
+                        aria-label={t('common.close', '닫기')}
+                        onClick={closeImageViewer}
                     >
                         <X className="h-6 w-6" />
                     </Button>
                 </div>
             )}
-        </div >
+        </div>
     )
 }
 
@@ -765,16 +850,7 @@ function SceneImageCard({
     onImageClick?: (imgSrc: string) => void
     onInpaint?: (base64: string) => void
 }) {
-    // SceneImageCard now just renders the image and overlay.
-    // Logic for loading the image data is handled by the browser <img> tag directly using the file path (image.url).
-    // Note: If Tauri requires a special protocol for local files, it's usually `asset://` or handled by `tauri-plugin-fs` + convertFileSrc.
-    // Assuming standard `src={image.url}` works for now based on context, or user has configured identifying protocol.
-    // If image.url is strictly a Windows path "C:\...", we might need convertFileSrc.
-    // BUT the previous code was using readFile + base64. Let's stick to that if needed, 
-    // OR try the simpler approach first if supported. 
-    // Wait, the previous code had `loadImage` logic because `image.url` is a raw path. 
-    // I will restore the `loadImage` logic inside SceneImageCard to ensure images display correctly.
-
+    const { t } = useTranslation()
     const [imgSrc, setImgSrc] = useState<string>('')
 
     useEffect(() => {
@@ -783,10 +859,17 @@ function SceneImageCard({
             setImgSrc(image.url)
             return
         }
-        // Use convertFileSrc for efficient native asset loading
-        // No need for base64 conversion - directly use the asset protocol
+        // The Scene store persists native paths; Tauri's asset URL keeps gallery rendering off the JS heap.
         setImgSrc(convertFileSrc(image.url))
     }, [image.url])
+
+    const activateImage = () => {
+        if (isEditMode) {
+            onSelect?.()
+        } else if (imgSrc) {
+            onImageClick?.(imgSrc)
+        }
+    }
 
     return (
         <SceneImageContextMenu
@@ -798,19 +881,26 @@ function SceneImageCard({
         >
             <div
                 className={cn(
-                    "relative group rounded-xl overflow-hidden bg-muted/30 border-2 transition-all duration-300 shadow-sm cursor-pointer",
+                    "group relative cursor-pointer overflow-hidden rounded-panel border bg-muted/30 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                     thumbnailLayout === 'vertical' ? "aspect-[2/3]" : "aspect-[3/2]",
                     isEditMode && isSelected
-                        ? "border-orange-500 ring-2 ring-orange-500/50"
+                        ? "border-primary ring-2 ring-primary/30"
                         : image.isFavorite
-                            ? "border-yellow-500 ring-2 ring-yellow-500/30"
-                            : "border-border/50 hover:border-primary/50"
+                            ? "border-warning ring-1 ring-warning/40"
+                            : "border-border hover:border-primary/60"
                 )}
-                onClick={() => {
-                    if (isEditMode) {
-                        onSelect?.()
-                    } else {
-                        imgSrc && onImageClick?.(imgSrc)
+                role="button"
+                tabIndex={0}
+                aria-pressed={isEditMode ? Boolean(isSelected) : undefined}
+                aria-label={isEditMode
+                    ? t('scene.toggleImageSelection', '이미지 선택 전환')
+                    : t('scene.openImage', '이미지 열기')}
+                onClick={activateImage}
+                onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        activateImage()
                     }
                 }}
             >
@@ -818,8 +908,8 @@ function SceneImageCard({
                 {imgSrc && (
                     <img
                         src={imgSrc}
-                        alt="Scene Image"
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        alt={t('scene.generatedImage', '생성된 씬 이미지')}
+                        className="h-full w-full object-cover"
                         loading="lazy"
                     />
                 )}
@@ -827,29 +917,35 @@ function SceneImageCard({
                 {/* Edit mode selection overlay */}
                 {isEditMode && (
                     <div className={cn(
-                        "absolute top-2 left-2 w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all",
+                        "absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-control border",
                         isSelected
-                            ? "bg-orange-500 border-orange-500"
-                            : "bg-black/50 border-white/50"
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-card/90 text-muted-foreground"
                     )}>
-                        {isSelected && <Check className="h-4 w-4 text-white" />}
+                        {isSelected && <Check className="h-4 w-4" />}
                     </div>
                 )}
 
-                {/* Overlay (hide in edit mode) */}
+                {/* Favorite remains directly reachable on touch; desktop may reveal the inactive state on focus/hover. */}
                 {!isEditMode && (
-                    <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-between p-3">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={(e) => { e.stopPropagation(); onToggleFavorite() }}
-                        >
-                            <Star className={cn("h-3.5 w-3.5", image.isFavorite && "fill-current")} />
-                        </Button>
-                    </div>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                            "absolute right-2 top-2 h-11 w-11 rounded-control border border-border bg-card/90 text-foreground shadow-sm transition-opacity hover:bg-accent lg:h-9 lg:w-9",
+                            !image.isFavorite && "lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100"
+                        )}
+                        aria-label={image.isFavorite
+                            ? t('scene.removeFavorite', '즐겨찾기 해제')
+                            : t('scene.addFavorite', '즐겨찾기 추가')}
+                        onClick={(event) => {
+                            event.stopPropagation()
+                            onToggleFavorite()
+                        }}
+                    >
+                        <Star className={cn("h-4 w-4", image.isFavorite && "fill-current text-warning")} />
+                    </Button>
                 )}
-
-                <div className="absolute inset-0 rounded-xl border border-transparent group-hover:border-primary/50 pointer-events-none" />
             </div>
         </SceneImageContextMenu>
     )

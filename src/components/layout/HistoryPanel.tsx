@@ -5,9 +5,14 @@ import { Button } from '@/components/ui/button'
 import { useGenerationStore } from '@/stores/generation-store'
 import { useAuthStore } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
-import { readDir, readFile, remove, writeFile, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs'
+import { readDir, readFile, remove, writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
 import { convertFileSrc, isTauri } from '@tauri-apps/api/core'
-import { pictureDir, join } from '@tauri-apps/api/path'
+import { join } from '@tauri-apps/api/path'
+import {
+    getMediaStorageRoot,
+    MEDIA_STORAGE_BASE_DIRECTORY,
+    shouldUseAbsoluteMediaPath,
+} from '@/platform/storage'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { save } from '@tauri-apps/plugin-dialog'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
@@ -93,8 +98,17 @@ const HistoryImageItem = memo(function HistoryImageItem({
         <ContextMenu>
             <ContextMenuTrigger asChild>
                 <div
-                    className="aspect-square bg-muted/30 rounded-xl overflow-hidden hover:ring-2 hover:ring-primary hover:scale-[1.02] transition-all shadow-sm relative group cursor-pointer"
+                    className="group relative aspect-square cursor-pointer overflow-hidden rounded-control border border-border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     onClick={() => onImageClick(image)}
+                    onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            onImageClick(image)
+                        }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t('history.openImage', '기록 이미지 열기') + ` ${index + 1}`}
                 >
                     {localThumbnail ? (
                         <img
@@ -146,28 +160,31 @@ const HistoryImageItem = memo(function HistoryImageItem({
                             }}
                             src={localThumbnail}
                             alt={`Image ${index + 1}`}
-                            className="w-full h-full object-cover"
+                            loading="lazy"
+                            decoding="async"
+                            className="h-full w-full object-cover transition-transform duration-standard group-hover:scale-[1.02]"
                         />
                     ) : (
-                        <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">
-                            Loading...
+                        <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground" role="status">
+                            {t('common.loading', '불러오는 중…')}
                         </div>
                     )}
                     <Button
                         variant="destructive"
                         size="icon"
-                        className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute right-1 top-1 h-11 w-11 opacity-100 shadow-panel sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
                         onClick={(e) => onDelete(image, e)}
+                        aria-label={t('actions.delete', '삭제')}
                     >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="h-4 w-4" />
                     </Button>
-                    <div className="absolute bottom-1 left-1 flex gap-1">
-                        <div className="h-5 w-5 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center">
+                    <div className="absolute bottom-1 left-1 flex gap-1" aria-hidden="true">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-control border border-border bg-card text-foreground shadow-panel">
                             {getTypeIcon(image.type)}
                         </div>
                         {image.isTemporary && (
-                            <div className="h-5 w-5 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center">
-                                <Zap className="h-3 w-3 text-yellow-400" />
+                            <div className="flex h-6 w-6 items-center justify-center rounded-control border border-border bg-card shadow-panel">
+                                <Zap className="h-3 w-3 text-warning" />
                             </div>
                         )}
                     </div>
@@ -336,16 +353,16 @@ export function HistoryPanel() {
     // Get icon component for generation type
     const getTypeIcon = (type: SavedImage['type']) => {
         switch (type) {
-            case 'i2i': return <ImageIcon className="h-3 w-3 text-indigo-400" />
-            case 'inpaint': return <Paintbrush className="h-3 w-3 text-pink-400" />
-            case 'upscale': return <Maximize2 className="h-3 w-3 text-purple-400" />
-            case 'scene': return <Film className="h-3 w-3 text-emerald-400" />
-            case 'lineart': return <PenTool className="h-3 w-3 text-slate-400" />
-            case 'sketch': return <Pencil className="h-3 w-3 text-gray-400" />
-            case 'colorize': return <Droplets className="h-3 w-3 text-cyan-400" />
-            case 'emotion': return <Smile className="h-3 w-3 text-yellow-400" />
-            case 'declutter': return <Sparkles className="h-3 w-3 text-emerald-400" />
-            default: return <ImageIcon className="h-3 w-3 text-amber-500" />
+            case 'i2i': return <ImageIcon className="h-3 w-3 text-info" />
+            case 'inpaint': return <Paintbrush className="h-3 w-3 text-destructive" />
+            case 'upscale': return <Maximize2 className="h-3 w-3 text-primary" />
+            case 'scene': return <Film className="h-3 w-3 text-success" />
+            case 'lineart': return <PenTool className="h-3 w-3 text-muted-foreground" />
+            case 'sketch': return <Pencil className="h-3 w-3 text-muted-foreground" />
+            case 'colorize': return <Droplets className="h-3 w-3 text-info" />
+            case 'emotion': return <Smile className="h-3 w-3 text-warning" />
+            case 'declutter': return <Sparkles className="h-3 w-3 text-success" />
+            default: return <ImageIcon className="h-3 w-3 text-foreground" />
         }
     }
 
@@ -360,15 +377,15 @@ export function HistoryPanel() {
 
         try {
             const images: SavedImage[] = []
-            const picturePath = await pictureDir()
+            const picturePath = await getMediaStorageRoot()
 
             // 1. Load Main Output Images - Always load from Pictures/NAIS_Output first
             const defaultOutputDir = 'NAIS_Output'
 
             // Always load from Pictures/NAIS_Output for backward compatibility
             try {
-                if (await exists(defaultOutputDir, { baseDir: BaseDirectory.Picture })) {
-                    const entries = await readDir(defaultOutputDir, { baseDir: BaseDirectory.Picture })
+                if (await exists(defaultOutputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })) {
+                    const entries = await readDir(defaultOutputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
 
                     for (const entry of entries) {
                         if (entry.name && (entry.name.toLowerCase().endsWith('.png') || entry.name.toLowerCase().endsWith('.jpg') || entry.name.toLowerCase().endsWith('.webp'))) {
@@ -389,7 +406,7 @@ export function HistoryPanel() {
             }
 
             // Additionally load from absolute path if set
-            if (useAbsolutePath && savePath) {
+            if (shouldUseAbsoluteMediaPath(useAbsolutePath) && savePath) {
                 try {
                     if (await exists(savePath)) {
                         const entries = await readDir(savePath)
@@ -419,19 +436,19 @@ export function HistoryPanel() {
 
             // 2. Load Scene Images (Recursive) - use the dedicated Scene folder setting.
             const sceneBaseDir = (sceneSavePath || 'NAIS_Scene').replace(/[<>:"/\\|?*]/g, '_').trim() || 'NAIS_Scene'
-            const scenePicturePath = await pictureDir()
+            const scenePicturePath = await getMediaStorageRoot()
 
             // Helper function to load scene images from a directory (supports presetName/sceneName structure)
             const loadSceneImagesFromDir = async (baseDir: string, useBaseDir: boolean = false) => {
                 try {
                     const checkExists = useBaseDir
-                        ? await exists(sceneBaseDir, { baseDir: BaseDirectory.Picture })
+                        ? await exists(sceneBaseDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                         : await exists(baseDir)
 
                     if (!checkExists) return
 
                     const presetOrSceneDirs = useBaseDir
-                        ? await readDir(sceneBaseDir, { baseDir: BaseDirectory.Picture })
+                        ? await readDir(sceneBaseDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                         : await readDir(baseDir)
 
                     for (const presetOrSceneDir of presetOrSceneDirs) {
@@ -442,7 +459,7 @@ export function HistoryPanel() {
                                     : await join(baseDir, presetOrSceneDir.name)
 
                                 const presetContents = useBaseDir
-                                    ? await readDir(presetFolderPath, { baseDir: BaseDirectory.Picture })
+                                    ? await readDir(presetFolderPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                                     : await readDir(presetFolderPath)
 
                                 for (const item of presetContents) {
@@ -453,7 +470,7 @@ export function HistoryPanel() {
                                             : await join(presetFolderPath, item.name)
 
                                         const sceneFiles = useBaseDir
-                                            ? await readDir(sceneFolderPath, { baseDir: BaseDirectory.Picture })
+                                            ? await readDir(sceneFolderPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                                             : await readDir(sceneFolderPath)
 
                                         for (const file of sceneFiles) {
@@ -463,7 +480,7 @@ export function HistoryPanel() {
                                                     ? `${sceneFolderPath}/${file.name}`
                                                     : await join(sceneFolderPath, file.name)
                                                 const rotationFiles = useBaseDir
-                                                    ? await readDir(rotationSceneFolderPath, { baseDir: BaseDirectory.Picture })
+                                                    ? await readDir(rotationSceneFolderPath, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                                                     : await readDir(rotationSceneFolderPath)
 
                                                 for (const rotationFile of rotationFiles) {
@@ -532,7 +549,7 @@ export function HistoryPanel() {
                 }
             }
 
-            if (useAbsoluteScenePath && sceneSavePath) {
+            if (shouldUseAbsoluteMediaPath(useAbsoluteScenePath) && sceneSavePath) {
                 await loadSceneImagesFromDir(sceneSavePath, false)
                 // Keep old relative Scene output visible after users move to an absolute Scene folder.
                 await loadSceneImagesFromDir('NAIS_Scene', true)
@@ -795,7 +812,7 @@ export function HistoryPanel() {
 
                         let fullPath: string
 
-                        if (useAbsolutePath) {
+                        if (shouldUseAbsoluteMediaPath(useAbsolutePath)) {
                             // Save to absolute path directly
                             const dirExists = await exists(outputDir)
                             if (!dirExists) {
@@ -805,13 +822,12 @@ export function HistoryPanel() {
                             await writeFile(fullPath, bytes)
                         } else {
                             // Save relative to Pictures directory
-                            const dirExists = await exists(outputDir, { baseDir: BaseDirectory.Picture })
+                            const dirExists = await exists(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                             if (!dirExists) {
-                                await mkdir(outputDir, { baseDir: BaseDirectory.Picture })
+                                await mkdir(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                             }
-                            await writeFile(`${outputDir}/${fileName}`, bytes, { baseDir: BaseDirectory.Picture })
-                            const picPath = await pictureDir()
-                            fullPath = await join(picPath, outputDir, fileName)
+                            await writeFile(`${outputDir}/${fileName}`, bytes, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+                            fullPath = await join(await getMediaStorageRoot(), outputDir, fileName)
                         }
 
                         // Dispatch event for instant history update
@@ -963,11 +979,11 @@ export function HistoryPanel() {
     }
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex h-full min-h-0 flex-col">
             {/* Header */}
-            <div className="h-12 flex items-center justify-between px-4">
-                <span className="text-sm font-medium flex items-center gap-2">
-                    <FolderOpen className="h-4 w-4 text-amber-400" />
+            <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
+                <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <FolderOpen className="h-4 w-4 text-primary" />
                     {t('history.title')}
                 </span>
                 <div className="flex items-center gap-2">
@@ -975,11 +991,13 @@ export function HistoryPanel() {
                         {t('history.count', { count: savedImages.length })}
                     </span>
                     <Button
+                        data-testid="history-refresh"
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7"
+                        className="h-11 w-11 shrink-0"
                         onClick={loadSavedImages}
                         disabled={isLoading}
+                        aria-label={t('history.refresh', '기록 새로고침')}
                     >
                         <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${isLoading ? 'animate-spin' : ''}`} />
                     </Button>
@@ -987,17 +1005,17 @@ export function HistoryPanel() {
             </div>
 
             {/* History Grid */}
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+            <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
                 {savedImages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground opacity-50">
-                        <div className="w-16 h-16 rounded-full bg-muted/30 flex items-center justify-center mb-3">
-                            <Clock className="h-6 w-6 opacity-50" />
+                    <div className="flex h-full min-h-48 flex-col items-center justify-center px-4 text-center text-muted-foreground" role="status" aria-live="polite">
+                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-panel border border-border bg-muted">
+                            {isLoading ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Clock className="h-5 w-5" />}
                         </div>
-                        <span className="text-xs">{t('history.empty')}</span>
+                        <span className="text-sm">{isLoading ? t('common.loading', '불러오는 중…') : t('history.empty')}</span>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 gap-2">
-                        {savedImages.slice(0, 20).map((image, index) => (
+                    <div className="grid grid-cols-2 gap-2 2xl:grid-cols-1">
+                        {savedImages.map((image, index) => (
                             <HistoryImageItem
                                 key={image.path}
                                 image={image}

@@ -1,64 +1,153 @@
 # NAIS2 Design System
 
-## Atmosphere / Signature
+This file is the visual contract for `src/styles/globals.css`, `tailwind.config.js`,
+the shared primitives in `src/components/ui`, and every workspace surface. Add a
+token here before introducing a new visual value in source. Android platform
+behavior remains owned by `src/platform/*`; this contract only defines how those
+capabilities are presented.
 
-NAIS2 is a dense production cockpit for image generation work. UI should feel quiet, direct, and repeatable: dark-native surfaces, thin borders, restrained contrast, compact controls, and prompt text kept readable over decoration.
+## 1. Atmosphere / Signature
 
-## Color
+**Cobalt Instrument** is a quiet, dense image-production cockpit. Matte graphite
+surfaces keep attention on prompts and generated images, while one near-primary
+blue marks selection, focus, and the next meaningful action. The interface uses
+thin dividers and tonal layers instead of decorative cards, glow, blur, or
+gradient chrome. `DESIGN_VARIANCE = 4`, `MOTION_INTENSITY = 3`, and
+`VISUAL_DENSITY = 8`.
 
-- `--background` light `0 0% 100%`, dark `0 0% 3.9%`: app background.
-- `--foreground` light `0 0% 3.9%`, dark `0 0% 98%`: primary text.
-- `--card` light `0 0% 100%`, dark `0 0% 3.9%`: framed panel surface.
-- `--card-foreground` light `0 0% 3.9%`, dark `0 0% 98%`: text on card.
-- `--popover` light `0 0% 100%`, dark `0 0% 3.9%`: overlay surface.
-- `--primary` light `0 0% 9%`, dark `0 0% 98%`: primary action and selected states.
-- `--primary-foreground` light `0 0% 98%`, dark `0 0% 9%`: text on primary.
-- `--secondary` light `0 0% 96.1%`, dark `0 0% 14.9%`: secondary control fill.
-- `--muted` light `0 0% 96.1%`, dark `0 0% 14.9%`: inactive panels and quiet fills.
-- `--muted-foreground` light `0 0% 45.1%`, dark `0 0% 63.9%`: secondary text.
-- `--accent` light `0 0% 96.1%`, dark `0 0% 14.9%`: hover and contextual highlight.
-- `--destructive` light `0 84.2% 60.2%`, dark `0 62.8% 30.6%`: errors and destructive actions.
-- `--border` light `0 0% 89.8%`, dark `0 0% 14.9%`: hairline borders.
-- `--ring` light `0 0% 3.9%`, dark `0 0% 83.1%`: focus ring.
-- Chart accents are available through `--chart-1` to `--chart-5`; do not introduce new raw accent colors in components.
+## 2. Color
 
-## Typography
+All CSS values are OKLCH channels consumed as `oklch(var(--token) / alpha)`.
+`--brand-core: 0.316 0.1719 263.65` is the requested anchor. Interactive primary
+tokens move lighter in dark mode so text, icons, and focus states remain legible.
 
-- Font stack: `Pretendard Variable`, `Pretendard`, `Inter`, `-apple-system`, `BlinkMacSystemFont`, `system-ui`, `sans-serif`.
-- Mono stack: `JetBrains Mono`, `Consolas`, `Monaco`, `monospace`.
-- Page title: `text-2xl`, weight `600`, line-height from Tailwind default.
-- Section title: `text-sm` or `text-base`, weight `600`.
-- Body: `text-sm`, weight `400`.
-- Metadata and counters: `text-xs`, mono only for ids, filenames, paths, and numeric job state.
-- Letter spacing remains Tailwind default; no negative tracking.
+| Semantic token | Light channels | Dark channels | Role |
+| --- | --- | --- | --- |
+| `--brand-core` | `0.316 0.1719 263.65` | `0.316 0.1719 263.65` | Immutable NAIS2 blue anchor |
+| `--background` | `0.975 0.006 264` | `0.130 0.012 262` | App frame |
+| `--foreground` | `0.190 0.025 262` | `0.940 0.012 260` | Primary text |
+| `--canvas` | `0.955 0.009 264` | `0.110 0.010 262` | Image/work canvas |
+| `--card` | `0.995 0.002 260` | `0.165 0.014 262` | Docked panel surface |
+| `--card-foreground` | `0.190 0.025 262` | `0.940 0.012 260` | Text on panel |
+| `--popover` | `1 0 0` | `0.190 0.018 262` | Menus and dialogs |
+| `--popover-foreground` | `0.190 0.025 262` | `0.940 0.012 260` | Text on overlays |
+| `--primary` | `0.420 0.205 263.65` | `0.680 0.180 263.65` | Main action and active state |
+| `--primary-foreground` | `0.985 0.005 260` | `0.130 0.020 262` | Content on primary |
+| `--secondary` | `0.935 0.014 262` | `0.225 0.020 262` | Secondary controls |
+| `--secondary-foreground` | `0.250 0.030 262` | `0.910 0.014 260` | Content on secondary |
+| `--muted` | `0.945 0.010 262` | `0.205 0.016 262` | Quiet fill |
+| `--muted-foreground` | `0.490 0.030 262` | `0.680 0.025 260` | Secondary text |
+| `--accent` | `0.910 0.045 263.65` | `0.240 0.055 263.65` | Hover and selected tonal fill |
+| `--accent-foreground` | `0.280 0.120 263.65` | `0.870 0.080 263.65` | Content on accent |
+| `--destructive` | `0.550 0.215 26` | `0.640 0.205 25` | Destructive and error |
+| `--destructive-foreground` | `0.985 0.005 260` | `0.985 0.005 260` | Content on destructive |
+| `--border` | `0.875 0.018 262` | `0.285 0.020 262` | Hairlines and separation |
+| `--input` | `0.845 0.020 262` | `0.320 0.024 262` | Form boundaries |
+| `--ring` | `0.500 0.205 263.65` | `0.720 0.170 263.65` | Keyboard focus |
+| `--success` | `0.520 0.140 150` | `0.690 0.160 150` | Success and verified |
+| `--warning` | `0.700 0.140 75` | `0.780 0.140 75` | Cost and caution |
+| `--info` | `0.520 0.160 250` | `0.720 0.150 250` | Informational state |
+| `--scrim` | `0.100 0.010 262` | `0.080 0.008 262` | Modal overlay at 72% alpha |
 
-## Spacing
+Charts use `--chart-1` through `--chart-5`; their OKLCH values are defined in
+`globals.css`. No raw hex, named Tailwind hue, or feature-specific accent may be
+introduced in edited components. Functional image overlays may use the scrim
+token with alpha.
 
-- Base unit is Tailwind spacing `1 = 0.25rem = 4px`.
-- Dense controls use `gap-2`, `px-3`, `py-2`.
-- Panels use `p-3` or `p-4`.
-- Page grids use `gap-3` or `gap-4`.
-- Large shell gutters are owned by `ThreeColumnLayout`; pages should not add outer hero spacing.
+## 3. Typography
 
-## Components
+- Sans stack: `Pretendard Variable`, `Pretendard`, `Noto Sans KR`,
+  `Apple SD Gothic Neo`, `Malgun Gothic`, `system-ui`, `sans-serif`. Pretendard is
+  deliberate for mixed Korean, English, and numeric production data; Inter and
+  Roboto are not defaults.
+- Mono stack: `JetBrains Mono`, `D2Coding`, `Consolas`, `monospace`, reserved for
+  seeds, balances, paths, dimensions, and job timing.
+- Page title: mobile `20px / 650 / 1.25`; desktop `24px / 650 / 1.25`.
+- Section title: `16px / 600 / 1.35`.
+- Control/body: `14px / 450 / 1.5`.
+- Label: `12px / 550 / 1.35`.
+- Metadata: `11px / 500 / 1.35`; never use below `11px`.
+- Prompt text: user-configurable `12–24px`; shell default `14px / 400 / 1.5`.
+- Letter spacing is normal. Uppercase tracking is reserved for machine metadata,
+  not headings.
 
-- Page section panel: `rounded-lg border border-border/50 bg-card/50`.
-- Repeated item card: `rounded-lg border border-border/50 bg-background/40`.
-- Form control: existing `Input`, `Textarea`, `Select`, `Switch`, `Button`.
-- Focus: `focus-visible:ring-2 focus-visible:ring-ring`.
-- Disabled: opacity and cursor state from shared UI components.
-- Icons: Lucide only.
-- Do not nest visual cards inside decorative cards; compact repeated cards inside a page section are allowed.
+## 4. Spacing and Responsive Structure
 
-## Motion
+The base unit is `4px`. Allowed rhythm tokens are `4, 8, 12, 16, 20, 24, 32,
+40, 44, 48, 64px`; `1px` is allowed only for borders. Tailwind equivalents are
+`1, 2, 3, 4, 5, 6, 8, 10, 11, 12, 16`.
 
-- Existing transitions use `transition-colors`, `transition-all`, and Framer Motion nav indicator.
-- Studio interactions should use opacity/color/background transitions only.
-- No layout animation for editor panels.
-- Reduced-motion inherits browser and Tailwind defaults.
+- `--touch-target = 44px`; every coarse-pointer action uses at least this hit box.
+- Shell inset: `8px` at 390, `12px` from 640, plus Android
+  `env(safe-area-inset-*)` at the outer shell and fixed overlays.
+- Shell gap: `8px` mobile, `12px` desktop.
+- Control padding: `8px 12px`; dense icon controls keep a 44px hit box and a
+  `16–20px` icon.
+- Panel padding: `12px` dense, `16px` standard, `24px` dialog/desktop settings.
+- Below `640px`: four primary destinations plus an accessible overflow menu;
+  Prompt and History remain dedicated actions. No horizontal navigation scroll.
+- `640–1535px`: center workspace remains primary; Prompt and History open as
+  sheets. This preserves `test:responsive-layout` center-width guarantees.
+- `1536px+`: Prompt and History may dock as the three-column workspace.
+- Scene grids render one column below `640px`, at most two below `1024px`, and
+  honor the stored column preference on desktop.
+- Fixed overlays never cover system bars. Text, toolbars, and pages must not
+  create horizontal page scrolling at 390, 768, or 1280px.
 
-## Depth
+## 5. Components and Information Architecture
 
-- Depth is border-first with muted translucent fills.
-- Existing shell shadows may stay at layout level.
-- New studio panels use borders and tonal fills, not custom box shadows.
+- **Workspace shell:** canvas first, 1px border, `12px` radius. Navigation is a
+  compact toolbar, not a floating pill. Active state uses `--accent` plus a
+  primary icon/text; inactive controls remain neutral.
+- **Buttons:** control radius `8px`. Primary is a flat `--primary` fill; hover
+  changes tone, active uses a slight opacity/transform response, focus uses a
+  2px `--ring`, and disabled retains its footprint at 45% opacity. No gradient.
+- **Inputs/selects/textareas:** `8px` radius, input border, canvas/card surface,
+  44px touch height on coarse pointers, blue focus ring, readable disabled state.
+- **Panels:** `12px` radius for shell-level panels only. Repeated rows use dividers
+  or tonal fills, not cards inside cards.
+- **Sheets:** full viewport width below `640px`, bounded to `420px` for Prompt and
+  `400px` for History above it. Close target is 44px, title/header reserves its
+  space, and content respects top/bottom safe areas.
+- **MainMode:** current result/canvas owns the view. On compact widths a bottom
+  command dock exposes prompt, model, resolution, seed, token state, and
+  generate/cancel without duplicating generation rules.
+- **SceneMode:** title and critical create/edit controls stay visible. Import,
+  rotation, queue, export, and sharing remain reachable in grouped overflow
+  menus on compact widths. The preset/view row wraps without horizontal scroll.
+- **Settings:** desktop uses a sticky section rail and broad content column.
+  Mobile uses one section select at the top; every section remains reachable.
+- **History:** empty/loading/error states occupy the panel without ornamental
+  rings. Sheet view uses a two-column thumbnail grid when space allows; docked
+  view may use one column.
+- **Icons:** Lucide only except existing product logos. Every icon-only action has
+  an accessible name and tooltip where hover exists.
+
+## 6. Motion
+
+- Fast feedback: `120ms`; standard state transition: `180ms`; overlays: `240ms`.
+- Easing: `cubic-bezier(0.2, 0, 0, 1)` for entrances and standard ease-out for
+  color changes.
+- Animate only `transform`, `opacity`, or `filter`. Width progress is the sole
+  functional exception because it communicates streamed generation progress.
+- Navigation may use one shared Framer Motion indicator with low bounce and
+  `180–240ms` duration.
+- `prefers-reduced-motion: reduce` removes transforms, animated scrolling, pulse,
+  ping, and spinners beyond the minimum state indication.
+
+## 7. Depth
+
+Depth is tonal and border-first. Workspace regions use `--background`,
+`--canvas`, and `--card` luminance steps plus 1px borders. One subtle panel
+shadow token (`0 8px 24px` at low scrim alpha) is allowed for floating sheets and
+dialogs only. No glow, glassmorphism, backdrop blur on persistent chrome, or
+decorative shadow ladder.
+
+## Do / Do Not
+
+- Do keep blue to active, focus, link, progress, and primary-action semantics.
+- Do make dense controls scan as rows and groups with separators.
+- Do preserve Android gates, safe areas, storage adapters, and every command.
+- Do not use purple, amber/orange action gradients, nested decorative cards,
+  oversized empty-state art, excessive pills, or hidden functionality.
+- Do not solve responsive failures with page-level horizontal scrolling.

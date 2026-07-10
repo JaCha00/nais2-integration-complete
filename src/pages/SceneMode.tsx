@@ -118,15 +118,16 @@ function SortablePresetRow({ preset, isActive, listeners, attributes, setNodeRef
             ref={setNodeRef}
             style={style}
             className={cn(
-                "flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors",
-                isActive ? "bg-primary/10 border border-primary/30" : "bg-muted/30 border border-transparent",
-                isDragging && "shadow-lg opacity-50"
+                "flex min-h-11 items-center gap-2 rounded-control border px-2 py-1 transition-colors duration-standard",
+                isActive ? "border-primary/40 bg-accent text-accent-foreground" : "border-border bg-card",
+                isDragging && "opacity-50"
             )}
         >
             <div
                 {...attributes}
                 {...listeners}
-                className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+                aria-label={t('scene.movePreset', '프리셋 순서 이동')}
+                className="flex h-11 w-11 shrink-0 cursor-grab items-center justify-center rounded-control text-muted-foreground hover:bg-accent hover:text-accent-foreground active:cursor-grabbing"
             >
                 <GripVertical className="h-4 w-4" />
             </div>
@@ -135,7 +136,7 @@ function SortablePresetRow({ preset, isActive, listeners, attributes, setNodeRef
             </span>
             <span className="text-xs text-muted-foreground">{preset.scenes.length}</span>
             {isActive && (
-                <span className="text-[10px] text-primary font-medium px-1.5 py-0.5 bg-primary/10 rounded">
+                <span className="text-xs font-medium text-primary">
                     {t('preset.active', '활성')}
                 </span>
             )}
@@ -169,19 +170,22 @@ function ScenePresetReorderDialog({ presets, activePresetId, onReorder, t }: {
     return (
         <Dialog>
             <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="shrink-0 rounded-lg h-8 w-8 hover:bg-white/10 text-muted-foreground">
-                    <Tip content={t('scene.reorderPresets', '프리셋 순서 편집')}>
-                        <ArrowUpDown className="h-4 w-4" />
-                    </Tip>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 shrink-0 text-muted-foreground"
+                    aria-label={t('scene.reorderPresets', '프리셋 순서 편집')}
+                >
+                    <ArrowUpDown className="h-4 w-4" />
                 </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-sm">
+            <DialogContent className="max-w-sm rounded-panel">
                 <DialogHeader>
                     <DialogTitle>{t('scene.reorderPresets', '프리셋 순서 편집')}</DialogTitle>
                 </DialogHeader>
                 <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis, restrictToParentElement]}>
                     <SortableContext items={presets.map(p => p.id)} strategy={verticalListSortingStrategy}>
-                        <div className="space-y-1.5 max-h-[400px] overflow-y-auto">
+                        <div className="max-h-[60vh] space-y-1 overflow-y-auto">
                             {presets.map(preset => (
                                 <SortablePresetWrapper key={preset.id} preset={preset} isActive={activePresetId === preset.id} t={t} />
                             ))}
@@ -470,349 +474,430 @@ export default function SceneMode() {
         setShowExportDialog(true)
     }
 
+    const handleClearSelectedFavorites = () => {
+        if (!activePresetId) return
+
+        let totalCount = 0
+        for (const sceneId of selectedSceneIds) {
+            totalCount += clearAllFavorites(activePresetId, sceneId)
+        }
+        if (totalCount > 0) {
+            toast({ description: t('scene.clearedFavorites', '{{count}}개 즐겨찾기 해제됨', { count: totalCount }) })
+        }
+    }
+
+    const handleDeleteSelectedImages = async () => {
+        if (!activePresetId) return
+
+        let totalCount = 0
+        const allPaths: string[] = []
+        for (const sceneId of selectedSceneIds) {
+            const { count, paths } = deleteAllImages(activePresetId, sceneId)
+            totalCount += count
+            allPaths.push(...paths)
+        }
+
+        for (const filePath of allPaths) {
+            try {
+                await remove(filePath)
+            } catch (error) {
+                console.warn('Delete failed:', error)
+            }
+        }
+        if (totalCount > 0) {
+            toast({ description: t('scene.deletedAllImages', '{{count}}개 이미지 전체 삭제됨', { count: totalCount }) })
+        }
+    }
+
     const activeItem = activeId ? scenes.find(s => s.id === activeId) : null
 
     return (
         <div
-            className="h-full flex flex-col gap-4 relative"
+            className="relative flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-hidden sm:gap-3"
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
         >
-            {/* Header - Normal Mode or Edit Mode */}
+            {/* DESIGN.md responsive contract: compact groups wrap as rows so every existing command stays reachable without page-level horizontal scroll. */}
             {isEditMode ? (
-                /* Edit Mode Toolbar */
-                <div className="flex items-center justify-between bg-primary/10 border border-primary/30 rounded-2xl p-3">
-                    <div className="flex items-center gap-3">
+                <div className="grid min-w-0 gap-2 rounded-panel border border-primary/30 bg-card p-2 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:p-3">
+                    <div className="flex min-w-0 items-center gap-2">
                         <Tip content={t('scene.exitEditMode', '편집 종료')} shortcut="Esc">
-                            <Button variant="ghost" size="icon" className="h-9 w-9 text-primary hover:bg-primary/20" onClick={() => { setEditMode(false); clearSelection() }}>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-11 w-11 shrink-0 text-primary"
+                                aria-label={t('scene.exitEditMode', '편집 종료')}
+                                onClick={() => { setEditMode(false); clearSelection() }}
+                            >
                                 <X className="h-4 w-4" />
                             </Button>
                         </Tip>
-                        <div className="h-6 w-px bg-primary/20" />
-                        <span className="text-sm font-medium text-primary">
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-primary" aria-live="polite">
                             {t('scene.selectedCount', { count: selectedSceneIds.length })}
                         </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        {/* Select All */}
                         <Tip content={t('scene.selectAll', '전체 선택')} shortcut="Ctrl+A">
-                            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={selectAllScenes} disabled={scenes.length === 0}>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-11 w-11 shrink-0"
+                                aria-label={t('scene.selectAll', '전체 선택')}
+                                onClick={selectAllScenes}
+                                disabled={scenes.length === 0}
+                            >
                                 <CheckSquare className="h-4 w-4" />
                             </Button>
                         </Tip>
-                        {/* Deselect All */}
                         <Tip content={t('scene.deselectAll', '선택 해제')}>
-                            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={clearSelection} disabled={selectedSceneIds.length === 0}>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-11 w-11 shrink-0"
+                                aria-label={t('scene.deselectAll', '선택 해제')}
+                                onClick={clearSelection}
+                                disabled={selectedSceneIds.length === 0}
+                            >
                                 <Square className="h-4 w-4" />
                             </Button>
                         </Tip>
-                        <div className="h-6 w-px bg-border" />
+                    </div>
 
-                        {/* Change Resolution */}
-                        <div className="flex items-center gap-2">
-                            <div className="w-[200px]">
-                                <ResolutionSelector
-                                    value={editModeResolution}
-                                    onChange={setEditModeResolution}
-                                    disabled={selectedSceneIds.length === 0}
-                                />
-                            </div>
-                            <Tip content={t('scene.applyResolution', '선택한 씬에 해상도 적용')}>
-                                <Button variant="secondary" size="icon" className="h-9 w-9" onClick={handleApplyResolutionToSelected} disabled={selectedSceneIds.length === 0}>
-                                    <Check className="h-4 w-4" />
-                                </Button>
-                            </Tip>
+                    <div className="flex min-w-0 items-center gap-2">
+                        <div className="min-w-0 flex-1">
+                            <ResolutionSelector
+                                value={editModeResolution}
+                                onChange={setEditModeResolution}
+                                disabled={selectedSceneIds.length === 0}
+                            />
                         </div>
+                        <Tip content={t('scene.applyResolution', '선택한 씬에 해상도 적용')}>
+                            <Button
+                                variant="secondary"
+                                size="icon"
+                                className="h-11 w-11 shrink-0"
+                                aria-label={t('scene.applyResolution', '선택한 씬에 해상도 적용')}
+                                onClick={handleApplyResolutionToSelected}
+                                disabled={selectedSceneIds.length === 0}
+                            >
+                                <Check className="h-4 w-4" />
+                            </Button>
+                        </Tip>
+                    </div>
 
-                        <div className="h-6 w-px bg-border" />
-
-                        {/* Move to Preset */}
+                    <div className="grid grid-cols-5 gap-2 lg:flex lg:justify-end">
                         <DropdownMenu>
-                            <Tip content={t('scene.moveToPreset', '프리셋으로 이동')}>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="outline" size="icon" className="h-9 w-9" disabled={selectedSceneIds.length === 0 || presets.length < 2}>
-                                        <FolderInput className="h-4 w-4" />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                            </Tip>
-                            <DropdownMenuContent className="max-h-[300px] overflow-y-auto">
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-11 w-full min-w-0 lg:w-11"
+                                    aria-label={t('scene.moveToPreset', '프리셋으로 이동')}
+                                    disabled={selectedSceneIds.length === 0 || presets.length < 2}
+                                >
+                                    <FolderInput className="h-4 w-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent className="max-h-[60vh] overflow-y-auto">
                                 {presets.filter(p => p.id !== activePresetId).map(p => (
-                                    <DropdownMenuItem key={p.id} onClick={() => moveSelectedScenesToPreset(p.id)}>
+                                    <DropdownMenuItem key={p.id} className="min-h-11" onClick={() => moveSelectedScenesToPreset(p.id)}>
                                         <ArrowRight className="mr-2 h-4 w-4" />
                                         {p.name}
                                     </DropdownMenuItem>
                                 ))}
                             </DropdownMenuContent>
                         </DropdownMenu>
-
-                        {/* Delete Selected */}
                         <Tip content={t('scene.deleteSelected', '선택 삭제')} shortcut="Del">
-                            <Button variant="destructive" size="icon" className="h-9 w-9" onClick={deleteSelectedScenes} disabled={selectedSceneIds.length === 0}>
+                            <Button
+                                variant="destructive"
+                                size="icon"
+                                className="h-11 w-full min-w-0 lg:w-11"
+                                aria-label={t('scene.deleteSelected', '선택 삭제')}
+                                onClick={deleteSelectedScenes}
+                                disabled={selectedSceneIds.length === 0}
+                            >
                                 <Trash2 className="h-4 w-4" />
                             </Button>
                         </Tip>
-
-                        <div className="h-6 w-px bg-border" />
-
-                        {/* Clear All Favorites in Selected Scenes */}
                         <Tip content={t('scene.clearAllFavoritesInSelected', '선택된 씬들의 즐겨찾기 전체 해제')}>
-                            <Button 
-                                variant="outline" 
-                                size="icon" 
-                                className="h-9 w-9" 
-                                onClick={() => {
-                                    if (!activePresetId) return
-                                    let totalCount = 0
-                                    for (const sceneId of selectedSceneIds) {
-                                        totalCount += clearAllFavorites(activePresetId, sceneId)
-                                    }
-                                    if (totalCount > 0) {
-                                        toast({ description: t('scene.clearedFavorites', '{{count}}개 즐겨찾기 해제됨', { count: totalCount }) })
-                                    }
-                                }} 
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-11 w-full min-w-0 lg:w-11"
+                                aria-label={t('scene.clearAllFavoritesInSelected', '선택된 씬들의 즐겨찾기 전체 해제')}
+                                onClick={handleClearSelectedFavorites}
                                 disabled={selectedSceneIds.length === 0}
                             >
                                 <Star className="h-4 w-4" />
                             </Button>
                         </Tip>
-
-                        {/* Delete All Images in Selected Scenes */}
                         <Tip content={t('scene.deleteAllImagesInSelected', '선택된 씬들의 이미지 전체 삭제')}>
-                            <Button 
-                                variant="outline" 
-                                size="icon" 
-                                className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10" 
-                                onClick={async () => {
-                                    if (!activePresetId) return
-                                    let totalCount = 0
-                                    const allPaths: string[] = []
-                                    for (const sceneId of selectedSceneIds) {
-                                        const { count, paths } = deleteAllImages(activePresetId, sceneId)
-                                        totalCount += count
-                                        allPaths.push(...paths)
-                                    }
-                                    // Delete actual files
-                                    for (const filePath of allPaths) {
-                                        try { await remove(filePath) } catch (e) { console.warn('Delete failed:', e) }
-                                    }
-                                    if (totalCount > 0) {
-                                        toast({ description: t('scene.deletedAllImages', '{{count}}개 이미지 전체 삭제됨', { count: totalCount }) })
-                                    }
-                                }} 
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-11 w-full min-w-0 text-destructive hover:bg-destructive/10 hover:text-destructive lg:w-11"
+                                aria-label={t('scene.deleteAllImagesInSelected', '선택된 씬들의 이미지 전체 삭제')}
+                                onClick={handleDeleteSelectedImages}
                                 disabled={selectedSceneIds.length === 0}
                             >
                                 <ImageOff className="h-4 w-4" />
                             </Button>
                         </Tip>
-
-                        {/* Export Selected ZIP */}
                         <Tip content={t('scene.exportSelectedZip', '선택한 씬 이미지 ZIP 내보내기')}>
-                            <Button variant="outline" size="icon" className="h-9 w-9" onClick={handleExportSelectedZip} disabled={selectedSceneIds.length === 0}>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-11 w-full min-w-0 lg:w-11"
+                                aria-label={t('scene.exportSelectedZip', '선택한 씬 이미지 ZIP 내보내기')}
+                                onClick={handleExportSelectedZip}
+                                disabled={selectedSceneIds.length === 0}
+                            >
                                 <Download className="h-4 w-4" />
                             </Button>
                         </Tip>
                     </div>
                 </div>
             ) : (
-                /* Normal Header */
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-2xl font-bold">{t('scene.title')}</h1>
-                    </div>
-                    <div className="flex gap-2">
-                        {/* Hidden file input for JSON import */}
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept=".json"
-                            multiple
-                            className="hidden"
-                            onChange={handleFileInputChange}
-                        />
-                        {/* Import JSON Button */}
-                        <Tip content={t('scene.importJson', 'JSON 불러오기')}>
-                            <Button variant="outline" size="icon" className="rounded-xl h-10 w-10 border-white/10 hover:bg-white/5" onClick={handleImportClick} disabled={isGenerating}>
-                                <Upload className="h-4 w-4" />
-                            </Button>
-                        </Tip>
-                        {/* Edit Mode Toggle Button */}
-                        <Tip content={t('scene.editMode', '여러 씬을 선택하여 일괄 편집')}>
-                            <Button variant="outline" size="icon" className="rounded-xl h-10 w-10 border-white/10 hover:bg-white/5" onClick={() => setEditMode(true)} disabled={scenes.length === 0 || isGenerating}>
-                                <Edit3 className="h-4 w-4" />
-                            </Button>
-                        </Tip>
-                        <Tip content={rotationActive ? '캐릭터 로테이션 상태 보기' : '캐릭터 로테이션 시작'}>
+                <div className="flex min-w-0 items-center gap-2">
+                    <h1 className="min-w-0 flex-1 whitespace-nowrap text-xl font-semibold sm:text-2xl">{t('scene.title')}</h1>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".json"
+                        multiple
+                        className="hidden"
+                        onChange={handleFileInputChange}
+                    />
+                    <Button
+                        size="icon"
+                        className="h-11 w-11 shrink-0 sm:w-auto sm:px-3"
+                        aria-label={t('scene.addScene')}
+                        onClick={handleAddScene}
+                        disabled={!activePresetId || isGenerating}
+                    >
+                        <Plus className="h-4 w-4 sm:mr-2" />
+                        <span className="hidden sm:inline">{t('scene.addScene')}</span>
+                    </Button>
+                    <Button
+                        variant="outline"
+                        className="h-11 shrink-0 px-3"
+                        aria-label={t('scene.editMode', '여러 씬을 선택하여 일괄 편집')}
+                        onClick={() => setEditMode(true)}
+                        disabled={scenes.length === 0 || isGenerating}
+                    >
+                        <Edit3 className="mr-2 h-4 w-4" />
+                        {t('common.edit', '편집')}
+                    </Button>
+                    {/* Compact grouping keeps import, rotation, queue, export, and sharing one tap away instead of hiding commands for the mobile audit. */}
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
                             <Button
                                 variant="outline"
                                 size="icon"
-                                className={cn(
-                                    'rounded-xl h-10 w-10 border-white/10 hover:bg-white/5',
-                                    rotationActive && 'border-primary/40 bg-primary/10 text-primary'
-                                )}
+                                className="h-11 w-11 shrink-0"
+                                aria-label={t('common.moreActions', '더보기 메뉴')}
+                            >
+                                <MoreVertical className="h-4 w-4" />
+                                <span className="sr-only">{t('common.moreActions', '더보기 메뉴')}</span>
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-64">
+                            <DropdownMenuItem className="min-h-11" onClick={handleImportClick} disabled={isGenerating}>
+                                <Upload className="mr-3 h-4 w-4" />
+                                {t('scene.importJson', 'JSON 불러오기')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                className="min-h-11"
                                 onClick={() => setShowRotationDialog(true)}
                                 disabled={(scenes.length === 0 && !rotationActive) || (isGenerating && !rotationActive)}
                             >
-                                <Drama className="h-4 w-4" />
-                            </Button>
-                        </Tip>
-                        <div className="flex items-center bg-muted/30 rounded-xl p-1 border border-white/5">
-                            <Tip content={t('scene.addAllQueue', '모든 씬 생성 대기열에 추가')}>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-white/10" onClick={() => activePresetId && addAllToQueue(activePresetId, batchCount)} disabled={scenes.length === 0 || isGenerating}>
-                                    <ListPlus className="h-4 w-4" />
-                                </Button>
-                            </Tip>
-                            <div className="w-px h-4 bg-white/10 mx-1" />
-                            <Tip content={t('scene.clearAllQueue', '모든 대기열 초기화')}>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => activePresetId && clearAllQueue(activePresetId)} disabled={totalQueue === 0 || isGenerating}>
-                                    <ListX className="h-4 w-4" />
-                                </Button>
-                            </Tip>
-                        </div>
-                        <Tip content={t('scene.exportJson', '씬 데이터를 JSON으로 내보내기')}>
-                            <Button variant="outline" size="icon" className="rounded-xl h-10 w-10 border-white/10 hover:bg-white/5" onClick={handleExportJson} disabled={!activePreset || isGenerating}>
-                                <Copy className="h-4 w-4" />
-                            </Button>
-                        </Tip>
-                        <Tip content={t('scene.shareToMarket', '마켓에 공유')}>
-                            <Button variant="outline" size="icon" className="rounded-xl h-10 w-10 border-white/10 hover:bg-white/5" onClick={() => setShowUploadDialog(true)} disabled={!activePreset || scenes.length === 0 || isGenerating}>
-                                <Store className="h-4 w-4" />
-                            </Button>
-                        </Tip>
-                        <Tip content={t('scene.exportZip', '모든 씬 이미지 ZIP 내보내기')}>
-                            <Button variant="outline" size="icon" className="rounded-xl h-10 w-10 border-white/10 hover:bg-white/5" onClick={handleExportZip} disabled={scenes.length === 0}>
-                                <Download className="h-4 w-4" />
-                            </Button>
-                        </Tip>
-                    </div>
+                                <Drama className="mr-3 h-4 w-4" />
+                                {rotationActive ? '캐릭터 로테이션 상태 보기' : '캐릭터 로테이션 시작'}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                className="min-h-11"
+                                onClick={() => activePresetId && addAllToQueue(activePresetId, batchCount)}
+                                disabled={scenes.length === 0 || isGenerating}
+                            >
+                                <ListPlus className="mr-3 h-4 w-4" />
+                                {t('scene.addAllQueue', '모든 씬 생성 대기열에 추가')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                className="min-h-11 text-destructive focus:text-destructive"
+                                onClick={() => activePresetId && clearAllQueue(activePresetId)}
+                                disabled={totalQueue === 0 || isGenerating}
+                            >
+                                <ListX className="mr-3 h-4 w-4" />
+                                {t('scene.clearAllQueue', '모든 대기열 초기화')}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="min-h-11" onClick={handleExportJson} disabled={!activePreset || isGenerating}>
+                                <Copy className="mr-3 h-4 w-4" />
+                                {t('scene.exportJson', '씬 데이터를 JSON으로 내보내기')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                className="min-h-11"
+                                onClick={() => setShowUploadDialog(true)}
+                                disabled={!activePreset || scenes.length === 0 || isGenerating}
+                            >
+                                <Store className="mr-3 h-4 w-4" />
+                                {t('scene.shareToMarket', '마켓에 공유')}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="min-h-11" onClick={handleExportZip} disabled={scenes.length === 0}>
+                                <Download className="mr-3 h-4 w-4" />
+                                {t('scene.exportZip', '모든 씬 이미지 ZIP 내보내기')}
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
             )}
 
-            <RotationStatusBar />
+            <div className="min-w-0 [&>div]:min-w-0 [&>div]:flex-wrap [&>div]:!rounded-panel [&>div]:!shadow-none [&>div>div:last-child]:flex-wrap">
+                <RotationStatusBar />
+            </div>
 
-            {/* Full screen Drag Overlay */}
-            {/* Full screen Drag Overlay */}
             {isDragOver && (
-                <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center transition-all duration-300 pointer-events-none">
-                    <div className="relative">
-                        {/* Animated ring */}
-                        <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-primary via-purple-500 to-primary animate-pulse opacity-50 blur-xl" />
-
-                        {/* Main card */}
-                        <div className="relative bg-background/80 backdrop-blur-xl border border-white/20 rounded-3xl p-12 shadow-2xl transform transition-transform scale-100">
-                            <div className="text-center space-y-4">
-                                {/* Animated icon container */}
-                                <div className="relative mx-auto w-20 h-20">
-                                    <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-                                    <div className="relative w-full h-full rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center shadow-inner">
-                                        <Download className="h-10 w-10 text-white" />
-                                    </div>
-                                </div>
-                                <div>
-                                    <p className="text-xl font-bold text-foreground">
-                                        {t('scene.dropImport', '프리셋 파일 놓기')}
-                                    </p>
-                                    <p className="text-sm text-muted-foreground mt-2">
-                                        {t('scene.dropImportDesc', 'JSON 파일을 드롭하여 프리셋을 불러오세요')}
-                                    </p>
-                                </div>
-                            </div>
+                <div
+                    className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-scrim/70 p-4"
+                    role="status"
+                    aria-live="polite"
+                >
+                    <div className="flex max-w-md items-center gap-4 rounded-panel border border-border bg-card p-6 text-card-foreground shadow-overlay">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-control bg-primary text-primary-foreground">
+                            <Download className="h-6 w-6" />
+                        </div>
+                        <div className="min-w-0">
+                            <p className="text-base font-semibold">{t('scene.dropImport', '프리셋 파일 놓기')}</p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                                {t('scene.dropImportDesc', 'JSON 파일을 드롭하여 프리셋을 불러오세요')}
+                            </p>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Preset Bar */}
-            <div className="flex items-center gap-3 p-3 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl shadow-sm">
-                <div className="flex items-center gap-2 flex-1 max-w-[300px]">
+            <div className="grid min-w-0 gap-2 rounded-panel border border-border bg-card p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                <div className="flex min-w-0 items-center gap-2">
                     {isRenamingPreset ? (
-                        <PresetRenameInput
-                            initialValue={activePreset?.name || ''}
-                            onSave={(val) => {
-                                if (activePresetId && val) {
-                                    renamePreset(activePresetId, val)
-                                }
-                                setIsRenamingPreset(false)
-                            }}
-                            onCancel={() => setIsRenamingPreset(false)}
-                        />
+                        <div className="min-w-0 flex-1">
+                            <PresetRenameInput
+                                initialValue={activePreset?.name || ''}
+                                onSave={(val) => {
+                                    if (activePresetId && val) {
+                                        renamePreset(activePresetId, val)
+                                    }
+                                    setIsRenamingPreset(false)
+                                }}
+                                onCancel={() => setIsRenamingPreset(false)}
+                            />
+                        </div>
                     ) : (
-                        <Select value={activePresetId || ''} onValueChange={setActivePreset} disabled={isGenerating || rotationActive}>
-                            <SelectTrigger className="rounded-xl bg-transparent border-white/10 hover:bg-white/5 transition-colors h-10">
-                                <SelectValue placeholder={t('scene.preset')} />
-                            </SelectTrigger>
-                            <SelectContent className="max-h-[300px]">
-                                {presets.map((preset) => (
-                                    <SelectItem key={preset.id} value={preset.id}>
-                                        {preset.id === 'scene-default' ? t('scene.presetDefault') : preset.name} ({preset.scenes.length})
-                                    </SelectItem>
-                                ))}
-                                <DropdownMenuSeparator />
-                                <div className="p-1">
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            placeholder={t('scene.newPresetName')}
-                                            value={newPresetName}
-                                            onChange={(e) => setNewPresetName(e.target.value)}
-                                            className="h-8 text-xs"
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    e.stopPropagation()
-                                                    handleAddPreset()
-                                                }
-                                            }}
-                                            onClick={(e) => e.stopPropagation()}
-                                        />
-                                        <Button size="sm" variant="secondary" className="h-8 px-2" onClick={(e) => { e.stopPropagation(); handleAddPreset() }} disabled={!newPresetName.trim() || isGenerating || rotationActive}>
-                                            <Plus className="h-4 w-4" />
-                                        </Button>
+                        <div className="min-w-0 flex-1">
+                            <Select value={activePresetId || ''} onValueChange={setActivePreset} disabled={isGenerating || rotationActive}>
+                                <SelectTrigger className="h-11 min-w-0 rounded-control border-border bg-canvas transition-colors duration-standard hover:bg-accent">
+                                    <SelectValue placeholder={t('scene.preset')} />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-[60vh]">
+                                    {presets.map((preset) => (
+                                        <SelectItem key={preset.id} value={preset.id}>
+                                            {preset.id === 'scene-default' ? t('scene.presetDefault') : preset.name} ({preset.scenes.length})
+                                        </SelectItem>
+                                    ))}
+                                    <DropdownMenuSeparator />
+                                    <div className="p-1">
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                placeholder={t('scene.newPresetName')}
+                                                value={newPresetName}
+                                                onChange={(e) => setNewPresetName(e.target.value)}
+                                                className="h-11 min-w-0 text-xs"
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.stopPropagation()
+                                                        handleAddPreset()
+                                                    }
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
+                                            <Button
+                                                size="icon"
+                                                variant="secondary"
+                                                className="h-11 w-11 shrink-0"
+                                                aria-label={t('scene.addPreset', '프리셋 추가')}
+                                                onClick={(e) => { e.stopPropagation(); handleAddPreset() }}
+                                                disabled={!newPresetName.trim() || isGenerating || rotationActive}
+                                            >
+                                                <Plus className="h-4 w-4" />
+                                            </Button>
+                                        </div>
                                     </div>
-                                </div>
-                            </SelectContent>
-                        </Select>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     )}
-                    {activePreset && activePreset.id !== 'scene-default' && (
-                        <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10">
+                    <div className="flex shrink-0 items-center gap-1">
+                        {activePreset && activePreset.id !== 'scene-default' && (
+                            <>
                             {!isRenamingPreset && (
                                 <Tip content={t('actions.rename', '이름 변경')}>
-                                    <Button variant="ghost" size="icon" className="shrink-0 rounded-lg h-8 w-8 hover:bg-white/10" onClick={() => setIsRenamingPreset(true)} disabled={isGenerating || rotationActive}>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-11 w-11 shrink-0"
+                                        aria-label={t('actions.rename', '이름 변경')}
+                                        onClick={() => setIsRenamingPreset(true)}
+                                        disabled={isGenerating || rotationActive}
+                                    >
                                         <Pencil className="h-4 w-4" />
                                     </Button>
                                 </Tip>
                             )}
                             <Tip content={t('scene.deletePreset', '프리셋 삭제')}>
-                                <Button variant="ghost" size="icon" className="shrink-0 rounded-lg h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => setShowDeletePresetDialog(true)} disabled={isGenerating || rotationActive}>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-11 w-11 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                    aria-label={t('scene.deletePreset', '프리셋 삭제')}
+                                    onClick={() => setShowDeletePresetDialog(true)}
+                                    disabled={isGenerating || rotationActive}
+                                >
                                     <Trash2 className="h-4 w-4" />
                                 </Button>
                             </Tip>
-                        </div>
-                    )}
-                    {presets.length > 1 && (
-                        <ScenePresetReorderDialog
-                            presets={presets}
-                            activePresetId={activePresetId}
-                            onReorder={reorderPresets}
-                            t={t}
-                        />
-                    )}
+                            </>
+                        )}
+                        {presets.length > 1 && (
+                            <ScenePresetReorderDialog
+                                presets={presets}
+                                activePresetId={activePresetId}
+                                onReorder={reorderPresets}
+                                t={t}
+                            />
+                        )}
+                    </div>
                 </div>
 
-
-
-                <div className="flex items-center gap-2 ml-auto">
+                <div className="grid grid-cols-2 gap-2 border-t border-border pt-2 sm:flex sm:border-l sm:border-t-0 sm:pl-2 sm:pt-0">
                     <Tip content={t('scene.thumbnailLayout', '세로/가로 썸네일 전환')}>
-                        <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-9 w-9 text-muted-foreground hover:text-foreground hover:bg-white/10" 
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-11 w-full text-muted-foreground sm:w-11"
+                            aria-label={t('scene.thumbnailLayout', '세로/가로 썸네일 전환')}
                             onClick={() => setThumbnailLayout(thumbnailLayout === 'vertical' ? 'horizontal' : 'vertical')}
                         >
                             {thumbnailLayout === 'vertical' ? <LayoutGrid className="h-4 w-4" /> : <LayoutList className="h-4 w-4" />}
                         </Button>
                     </Tip>
                     <Tip content={t('scene.gridColumnsDesc', '그리드 열 개수 변경')}>
-                        <Button variant="ghost" size="sm" className="h-9 text-muted-foreground hover:text-foreground hover:bg-white/10" onClick={handleToggleGrid}>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-11 w-full text-muted-foreground sm:w-auto"
+                            aria-label={t('scene.gridColumnsValue', '{{count}}열, 열 개수 변경', { count: gridColumns })}
+                            onClick={handleToggleGrid}
+                        >
                             <Grid3x3 className="h-4 w-4 mr-1.5" />
                             <span className="font-medium text-sm">{gridColumns}</span>
                         </Button>
@@ -820,14 +905,18 @@ export default function SceneMode() {
                 </div>
             </div>
 
-            {/* Scene Grid */}
-            <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-1">
+            <div ref={scrollContainerRef} className="custom-scrollbar min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-1">
                 {scenes.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-muted-foreground bg-white/5 rounded-3xl border border-white/10 border-dashed">
-                        <div className="h-20 w-20 rounded-full bg-white/5 flex items-center justify-center mb-6"> <ImageIcon className="h-10 w-10 opacity-50" /> </div>
-                        <h3 className="text-xl font-medium mb-2">{t('scene.noScenes')}</h3>
-                        <p className="text-sm mb-6 max-w-sm text-center leading-relaxed opacity-70">{t('scene.noScenesDesc')}</p>
-                        <Button className="rounded-xl h-11 px-8" variant="outline" onClick={handleAddScene} disabled={isGenerating}> <Plus className="mr-2 h-5 w-5" /> {t('scene.addScene')} </Button>
+                    <div className="grid gap-4 rounded-panel border border-dashed border-border bg-canvas p-4 text-muted-foreground sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
+                        <ImageIcon className="h-10 w-10 text-muted-foreground" />
+                        <div className="min-w-0">
+                            <h3 className="text-base font-semibold text-foreground">{t('scene.noScenes')}</h3>
+                            <p className="mt-1 text-sm leading-relaxed">{t('scene.noScenesDesc')}</p>
+                        </div>
+                        <Button className="h-11 px-4" variant="outline" onClick={handleAddScene} disabled={isGenerating}>
+                            <Plus className="mr-2 h-5 w-5" />
+                            {t('scene.addScene')}
+                        </Button>
                     </div>
                 ) : (
                     <DndContext
@@ -842,7 +931,14 @@ export default function SceneMode() {
                         onDragEnd={handleDragEnd}
                     >
                         <SortableContext items={scenes.map(s => s.id)} strategy={rectSortingStrategy}>
-                            <div className="grid gap-6 pb-20" style={{ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }}>
+                            {/* DESIGN.md stores 2-5 columns as a desktop preference; effective columns are capped at 1/2 below lg without mutating that preference. */}
+                            <div className={cn(
+                                "grid min-w-0 grid-cols-1 gap-2 pb-16 sm:grid-cols-2 sm:gap-3",
+                                gridColumns === 2 && "lg:grid-cols-2",
+                                gridColumns === 3 && "lg:grid-cols-3",
+                                gridColumns === 4 && "lg:grid-cols-4",
+                                gridColumns === 5 && "lg:grid-cols-5"
+                            )}>
                                 {scenes.map((scene) => (
                                     <SortableSceneCard
                                         key={scene.id}
@@ -850,9 +946,18 @@ export default function SceneMode() {
                                         disabled={isGenerating}
                                     />
                                 ))}
-                                <button onClick={!isGenerating ? handleAddScene : undefined} className={cn("flex flex-col items-center justify-center h-full rounded-2xl border-2 border-dashed border-white/10 bg-white/5 hover:bg-white/10 hover:border-primary/50 transition-all group", thumbnailLayout === 'vertical' ? "aspect-[2/3]" : "aspect-[3/2]", isGenerating && "opacity-50 cursor-not-allowed")}>
-                                    <div className="h-12 w-12 rounded-full bg-white/5 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform"> <Plus className="h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors" /> </div>
-                                    <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors"> {t('scene.addScene')} </span>
+                                <button
+                                    type="button"
+                                    aria-label={t('scene.addScene')}
+                                    onClick={!isGenerating ? handleAddScene : undefined}
+                                    disabled={isGenerating}
+                                    className={cn(
+                                        "group flex min-w-0 flex-col items-center justify-center rounded-panel border border-dashed border-border bg-card p-4 text-muted-foreground transition-colors duration-standard hover:border-primary/50 hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45",
+                                        thumbnailLayout === 'vertical' ? "aspect-[2/3]" : "aspect-[3/2]"
+                                    )}
+                                >
+                                    <Plus className="mb-2 h-6 w-6 transition-transform duration-standard motion-safe:group-hover:scale-105" />
+                                    <span className="text-sm font-medium">{t('scene.addScene')}</span>
                                 </button>
                             </div>
                         </SortableContext>
@@ -1000,118 +1105,164 @@ const SceneCardItem = memo(function SceneCardItem({ scene, onClick, disabled = f
                 <div
                     style={style}
                     className={cn(
-                        "group relative flex flex-col rounded-2xl overflow-hidden",
-                        thumbnailLayout === 'vertical' ? "aspect-[2/3]" : "aspect-[3/2]",
-                        "bg-card border border-border/50 shadow-sm",
-                        !isOverlay && "hover:shadow-lg hover:border-primary/30 transition-shadow",
-                        isOverlay && "shadow-xl ring-2 ring-primary cursor-grabbing z-50",
-                        disabled && "opacity-80 pointer-events-none",
-                        isEditMode && isSelected && "ring-2 ring-orange-500"
+                        "group relative flex min-w-0 flex-col overflow-hidden rounded-panel border border-border bg-card transition-colors duration-standard",
+                        !isOverlay && "hover:border-primary/40",
+                        isOverlay && "z-50 cursor-grabbing shadow-overlay ring-2 ring-primary",
+                        disabled && "pointer-events-none opacity-80",
+                        isEditMode && isSelected && "border-primary ring-2 ring-primary/40"
                     )}
                     onClick={(e) => { if (!isOverlay && !isEditing && !disabled) handleSceneClick(e) }}
                     {...(!isEditing && !isEditMode ? dragAttributes : {})}
                     {...(!isEditing && !isEditMode ? dragListeners : {})}
                 >
-                    {/* Selection Checkbox Overlay (Edit Mode) */}
-                    {isEditMode && (
-                        <div className="absolute top-2 right-2 z-40">
-                            <div className={cn(
-                                "h-6 w-6 rounded-md flex items-center justify-center transition-all",
-                                isSelected ? "bg-orange-500 text-white" : "bg-black/40 text-white/70 border border-white/30"
-                            )}>
-                                {isSelected ? <Check className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                    <div className={cn(
+                        "relative w-full overflow-hidden bg-canvas",
+                        thumbnailLayout === 'vertical' ? "aspect-[2/3]" : "aspect-[3/2]"
+                    )}>
+                        <div className="absolute left-2 right-16 top-2 z-30 flex flex-wrap gap-1">
+                            {queueCount > 0 && (
+                                <span className="rounded-control bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground">
+                                    {queueCount}
+                                </span>
+                            )}
+                            {excludePinned && (
+                                <span className="flex items-center gap-1 rounded-control bg-warning px-2 py-1 text-xs font-semibold text-background">
+                                    <UserMinus className="h-3 w-3" />
+                                    고정 제외
+                                </span>
+                            )}
+                        </div>
+
+                        {isEditMode && (
+                            <div className="absolute right-2 top-2 z-40">
+                                <div className={cn(
+                                    "flex h-8 w-8 items-center justify-center rounded-control border transition-colors duration-standard",
+                                    isSelected
+                                        ? "border-primary bg-primary text-primary-foreground"
+                                        : "border-border bg-card/90 text-muted-foreground"
+                                )}>
+                                    {isSelected ? <Check className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {/* Queue Badge - lightweight */}
-                    {queueCount > 0 && (
-                        <div className="absolute top-2 left-2 z-30 px-2.5 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full">
-                            {queueCount}
-                        </div>
-                    )}
-
-                    {excludePinned && (
-                        <div className={cn(
-                            'absolute top-2 z-30 flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm',
-                            queueCount > 0 ? 'left-11' : 'left-2'
-                        )}>
-                            <UserMinus className="h-3 w-3" />
-                            고정 제외
-                        </div>
-                    )}
-
-                    {/* 3-dot Menu - hidden in edit mode */}
-                    {!disabled && !isOverlay && !isEditMode && (
-                        <div className="absolute top-2 right-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {!disabled && !isOverlay && !isEditMode && (
+                            <div
+                                className="absolute right-2 top-2 z-30"
+                                onClick={(event) => event.stopPropagation()}
+                                onPointerDown={(event) => event.stopPropagation()}
+                            >
                             <DropdownMenu>
-                                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                    <Button variant="secondary" size="icon" className="h-8 w-8 rounded-full bg-black/50 hover:bg-black/70 text-white"> <MoreVertical className="h-4 w-4" /> </Button>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-11 w-11 bg-card/90"
+                                        aria-label={t('scene.sceneActions', '{{name}} 작업 메뉴', { name: scene.name })}
+                                    >
+                                        <MoreVertical className="h-4 w-4" />
+                                    </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-40">
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setIsEditing(true); setEditName(scene.name) }}> <Pencil className="mr-2 h-4 w-4" /> {t('scene.rename')} </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDuplicate() }}> <Copy className="mr-2 h-4 w-4" /> {t('scene.duplicate')} </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onToggleExcludePinned() }}>
+                                    <DropdownMenuItem className="min-h-11" onClick={(e) => { e.stopPropagation(); setIsEditing(true); setEditName(scene.name) }}>
+                                        <Pencil className="mr-2 h-4 w-4" />
+                                        {t('scene.rename')}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem className="min-h-11" onClick={(e) => { e.stopPropagation(); onDuplicate() }}>
+                                        <Copy className="mr-2 h-4 w-4" />
+                                        {t('scene.duplicate')}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem className="min-h-11" onClick={(e) => { e.stopPropagation(); onToggleExcludePinned() }}>
                                         {excludePinned ? <UserCheck className="mr-2 h-4 w-4" /> : <UserMinus className="mr-2 h-4 w-4" />}
                                         {excludePinned ? '고정 캐릭터 포함' : '고정 캐릭터 제외'}
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={(e) => { e.stopPropagation(); onDelete() }}> <Trash2 className="mr-2 h-4 w-4" /> {t('actions.delete')} </DropdownMenuItem>
+                                    <DropdownMenuItem className="min-h-11 text-destructive focus:text-destructive" onClick={(e) => { e.stopPropagation(); onDelete() }}>
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        {t('actions.delete')}
+                                    </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
-                        </div>
-                    )}
-
-                    <div className="relative flex-1 bg-zinc-900/50 w-full overflow-hidden">
-                        {isStreaming && streamingImage ? (
-                            <img src={streamingImage} alt="Streaming..." className="w-full h-full object-cover animate-pulse" />
-                        ) : imageUrl ? (
-                            <img src={imageUrl} alt={scene.name} className="w-full h-full object-cover" draggable={false} />
-                        ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground/30"> <ImageIcon className="h-10 w-10 mb-2" /> <span className="text-xs">No Image</span> </div>
+                            </div>
                         )}
-                        {/* Gradient - hover only for performance */}
-                        <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
-                        {/* Progress Bar for Streaming */}
+                        {isStreaming && streamingImage ? (
+                            <img src={streamingImage} alt={scene.name} className="h-full w-full object-cover motion-safe:animate-pulse" />
+                        ) : imageUrl ? (
+                            <img src={imageUrl} alt={scene.name} className="h-full w-full object-cover" draggable={false} />
+                        ) : (
+                            <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground">
+                                <ImageIcon className="mb-2 h-10 w-10" />
+                                <span className="text-xs">{t('scene.noImage', '이미지 없음')}</span>
+                            </div>
+                        )}
                         {isStreaming && streamingProgress > 0 && (
-                            <div className="absolute inset-x-0 bottom-0 h-1.5 bg-gray-600/50 z-20 backdrop-blur-sm">
+                            <div className="absolute inset-x-0 bottom-0 z-20 h-1 bg-muted">
                                 <div
-                                    className="h-full bg-white transition-all duration-300"
+                                    className="h-full bg-primary transition-[width] duration-standard"
                                     style={{ width: `${streamingProgress * 100}%` }}
                                 />
                             </div>
                         )}
                     </div>
 
-                    <div className="absolute bottom-0 inset-x-0 p-3 z-20">
-                        <div className="mb-3">
-                            {isEditing ? (
-                                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-                                    <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="h-8 text-sm rounded-lg bg-black/60 border-white/20 text-white focus-visible:ring-primary" autoFocus onBlur={handleSaveName} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') setIsEditing(false) }} />
-                                </div>
-                            ) : (
-                                <h3 className="text-sm font-semibold text-white truncate drop-shadow-md">{scene.name}</h3>
-                            )}
-                        </div>
+                    <div className="border-t border-border bg-card p-2">
+                        {isEditing ? (
+                            <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+                                <Input
+                                    value={editName}
+                                    onChange={(e) => setEditName(e.target.value)}
+                                    className="h-11 min-w-0 text-sm"
+                                    aria-label={t('scene.rename')}
+                                    autoFocus
+                                    onBlur={handleSaveName}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleSaveName()
+                                        if (e.key === 'Escape') setIsEditing(false)
+                                    }}
+                                />
+                            </div>
+                        ) : (
+                            <h3 className="truncate px-1 text-sm font-semibold text-card-foreground">{scene.name}</h3>
+                        )}
 
-                        <div className="flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-                            <Button variant="secondary" size="icon" className="h-7 w-7 rounded-lg bg-white/10 hover:bg-white/20 text-white border border-white/5 disabled:opacity-30" onClick={() => onDecrement()} disabled={queueCount === 0 || disabled}> <Minus className="h-3 w-3" /> </Button>
-                            <div className="flex-1" />
-                            <Button variant="secondary" size="icon" className="h-7 w-7 rounded-lg bg-white/10 hover:bg-white/20 text-white border border-white/5" onClick={() => onIncrement()} disabled={disabled}> <Plus className="h-3 w-3" /> </Button>
+                        <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-11 w-11 shrink-0"
+                                aria-label={t('scene.decreaseQueue', '{{name}} 대기열 줄이기', { name: scene.name })}
+                                onClick={onDecrement}
+                                disabled={queueCount === 0 || disabled}
+                            >
+                                <Minus className="h-4 w-4" />
+                            </Button>
+                            <span className="min-w-0 flex-1 truncate text-center text-xs text-muted-foreground" aria-live="polite">
+                                {t('scene.queueCountLabel', '대기열 {{count}}', { count: queueCount })}
+                            </span>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-11 w-11 shrink-0"
+                                aria-label={t('scene.increaseQueue', '{{name}} 대기열 늘리기', { name: scene.name })}
+                                onClick={onIncrement}
+                                disabled={disabled}
+                            >
+                                <Plus className="h-4 w-4" />
+                            </Button>
                         </div>
                     </div>
                 </div>
             </ContextMenuTrigger>
             <ContextMenuContent className="w-40">
-                <ContextMenuItem onClick={() => { setIsEditing(true); setEditName(scene.name) }}> <Pencil className="mr-2 h-4 w-4" /> {t('scene.rename')} </ContextMenuItem>
-                <ContextMenuItem onClick={() => onDuplicate()}> <Copy className="mr-2 h-4 w-4" /> {t('scene.duplicate')} </ContextMenuItem>
-                <ContextMenuItem onClick={() => onToggleExcludePinned()}>
+                <ContextMenuItem className="min-h-11" onClick={() => { setIsEditing(true); setEditName(scene.name) }}> <Pencil className="mr-2 h-4 w-4" /> {t('scene.rename')} </ContextMenuItem>
+                <ContextMenuItem className="min-h-11" onClick={() => onDuplicate()}> <Copy className="mr-2 h-4 w-4" /> {t('scene.duplicate')} </ContextMenuItem>
+                <ContextMenuItem className="min-h-11" onClick={() => onToggleExcludePinned()}>
                     {excludePinned ? <UserCheck className="mr-2 h-4 w-4" /> : <UserMinus className="mr-2 h-4 w-4" />}
                     {excludePinned ? '고정 캐릭터 포함' : '고정 캐릭터 제외'}
                 </ContextMenuItem>
                 <ContextMenuSeparator />
-                <ContextMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete()}> <Trash2 className="mr-2 h-4 w-4" /> {t('actions.delete')} </ContextMenuItem>
+                <ContextMenuItem className="min-h-11 text-destructive focus:text-destructive" onClick={() => onDelete()}> <Trash2 className="mr-2 h-4 w-4" /> {t('actions.delete')} </ContextMenuItem>
             </ContextMenuContent>
         </ContextMenu>
     )
@@ -1135,11 +1286,12 @@ const PresetRenameInput = memo(({
     }
 
     return (
-        <div className="flex items-center gap-1 flex-1">
+        <div className="flex min-w-0 flex-1 items-center gap-1">
             <Input
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
-                className="h-9"
+                className="h-11 min-w-0"
+                aria-label="프리셋 이름"
                 autoFocus
                 onBlur={handleSave}
                 onKeyDown={(e) => {
@@ -1147,7 +1299,7 @@ const PresetRenameInput = memo(({
                     if (e.key === 'Escape') onCancel()
                 }}
             />
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleSave}>
+            <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0" aria-label="프리셋 이름 저장" onClick={handleSave}>
                 <Check className="h-4 w-4" />
             </Button>
         </div>
@@ -1158,7 +1310,7 @@ const PresetRenameInput = memo(({
 const SortableSceneCard = memo(function SortableSceneCard(props: any) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.scene.id, disabled: props.disabled })
     const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.0 : 1 }
-    return <div ref={setNodeRef} style={style}> <SceneCardItem {...props} dragAttributes={attributes} dragListeners={listeners} /> </div>
+    return <div ref={setNodeRef} style={style} className="min-w-0"> <SceneCardItem {...props} dragAttributes={attributes} dragListeners={listeners} /> </div>
 }, (prevProps, nextProps) => {
     // Only re-render if scene id, queueCount, name, or disabled changes
     return prevProps.scene.id === nextProps.scene.id &&

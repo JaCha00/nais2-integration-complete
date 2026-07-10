@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ImageIcon, ImagePlus, Download, Copy, RotateCcw, Save, Users, FolderOpen, Paintbrush } from 'lucide-react'
+import { ImageIcon, ImagePlus, Download, Copy, RotateCcw, Save, Users, FolderOpen, Paintbrush, SlidersHorizontal, Square } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useGenerationStore } from '@/stores/generation-store'
+import { AVAILABLE_MODELS, useGenerationStore } from '@/stores/generation-store'
 import { useAuthStore } from '@/stores/auth-store'
 import { useSettingsStore } from '@/stores/settings-store'
 import { MetadataDialog } from '@/components/metadata/MetadataDialog'
@@ -19,12 +19,18 @@ import {
 } from '@/components/ui/context-menu'
 import { openPath } from '@tauri-apps/plugin-opener'
 import { save } from '@tauri-apps/plugin-dialog'
-import { pictureDir, join } from '@tauri-apps/api/path'
-import { writeFile, mkdir, exists, BaseDirectory } from '@tauri-apps/plugin-fs'
+import { join } from '@tauri-apps/api/path'
+import { writeFile, mkdir, exists } from '@tauri-apps/plugin-fs'
+import {
+    getMediaStorageRoot,
+    MEDIA_STORAGE_BASE_DIRECTORY,
+    shouldUseAbsoluteMediaPath,
+} from '@/platform/storage'
 import { useNavigate } from 'react-router-dom'
 import { useToolsStore } from '@/stores/tools-store'
 import { Wand2 } from 'lucide-react'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
+import { LAYOUT_SHEET_EVENTS } from '@/components/layout/layout-events'
 
 export default function MainMode() {
     const { t } = useTranslation()
@@ -39,12 +45,22 @@ export default function MainMode() {
         batchCount,
         currentBatch,
         streamProgress,
+        model,
+        isCancelled,
+        generatingMode,
+        generate,
+        cancelGeneration,
         setSourceImage,
         setI2IMode,
     } = useGenerationStore()
 
     const navigate = useNavigate()
     const { setActiveImage } = useToolsStore()
+    const anlas = useAuthStore(state => state.anlas)
+    const anlas2 = useAuthStore(state => state.anlas2)
+    const slot2Enabled = useAuthStore(state => state.slot2Enabled)
+    const selectedModelName = AVAILABLE_MODELS.find(option => option.id === model)?.name ?? model
+    const visibleBalance = slot2Enabled && anlas2 ? anlas2.total : anlas?.total
 
     const [metadataDialogOpen, setMetadataDialogOpen] = useState(false)
     const [metadataImage, setMetadataImage] = useState<string | undefined>(undefined)
@@ -148,7 +164,7 @@ export default function MainMode() {
 
                         let fullPath: string
 
-                        if (useAbsolutePath) {
+                        if (shouldUseAbsoluteMediaPath(useAbsolutePath)) {
                             // Save to absolute path directly
                             const dirExists = await exists(outputDir)
                             if (!dirExists) {
@@ -158,13 +174,12 @@ export default function MainMode() {
                             await writeFile(fullPath, bytes)
                         } else {
                             // Save relative to Pictures directory
-                            const dirExists = await exists(outputDir, { baseDir: BaseDirectory.Picture })
+                            const dirExists = await exists(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                             if (!dirExists) {
-                                await mkdir(outputDir, { baseDir: BaseDirectory.Picture })
+                                await mkdir(outputDir, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
                             }
-                            await writeFile(`${outputDir}/${fileName}`, bytes, { baseDir: BaseDirectory.Picture })
-                            const picPath = await pictureDir()
-                            fullPath = await join(picPath, outputDir, fileName)
+                            await writeFile(`${outputDir}/${fileName}`, bytes, { baseDir: MEDIA_STORAGE_BASE_DIRECTORY })
+                            fullPath = await join(await getMediaStorageRoot(), outputDir, fileName)
                         }
 
                         // Dispatch event for instant history update
@@ -255,11 +270,10 @@ export default function MainMode() {
             const finalSavePath = savePath || 'NAIS_Output'
 
             let folderPath: string
-            if (useAbsolutePath) {
+            if (shouldUseAbsoluteMediaPath(useAbsolutePath)) {
                 folderPath = finalSavePath
             } else {
-                const picPath = await pictureDir()
-                folderPath = await join(picPath, finalSavePath)
+                folderPath = await join(await getMediaStorageRoot(), finalSavePath)
             }
 
             const dirExists = await exists(folderPath)
@@ -306,6 +320,37 @@ export default function MainMode() {
             setMetadataImage(previewImage)
             setMetadataDialogOpen(true)
         }
+    }
+
+    // ThreeColumnLayout owns Sheet state. This event keeps MainMode's compact
+    // command dock decoupled while making the primary prompt flow discoverable.
+    const handleOpenPromptSheet = () => {
+        window.dispatchEvent(new Event(LAYOUT_SHEET_EVENTS.OPEN_PROMPT))
+    }
+
+    const handlePrimaryGeneration = () => {
+        if (isGenerating && generatingMode === 'main') {
+            cancelGeneration()
+            return
+        }
+        if (!isGenerating) {
+            generate()
+        }
+    }
+
+    const handleSeedAction = () => {
+        const targetSeed = previewSeed ?? seed
+        if (targetSeed === null || targetSeed === undefined) return
+
+        if (previewSeed !== null && previewSeed !== undefined) {
+            genStore.setSeed(previewSeed)
+            genStore.setPreviewSeed(null)
+            toast({ title: t('toast.seedApplied', '시드 적용됨'), variant: 'success' })
+            return
+        }
+
+        navigator.clipboard.writeText(targetSeed.toString())
+        toast({ title: t('toast.copied', '복사됨'), variant: 'success' })
     }
 
     // Drag counter to prevent flickering from child elements
@@ -384,80 +429,69 @@ export default function MainMode() {
 
     return (
         <div
-            className="relative w-full h-full min-h-0 bg-background/50"
+            className="relative h-full min-h-0 w-full overflow-hidden bg-canvas"
             onDrop={handleDrop}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
         >
-            {/* Drag overlay - Modern glassmorphism style */}
+            {/* DESIGN.md Cobalt Instrument: drag feedback is a single semantic
+                layer so metadata import stays clear without glow or glass. */}
             {isDragOver && (
-                <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center">
-                    <div className="relative">
-                        {/* Animated ring */}
-                        <div className="absolute inset-0 rounded-3xl bg-gradient-to-r from-primary via-purple-500 to-primary animate-pulse opacity-50 blur-xl" />
-
-                        {/* Main card */}
-                        <div className="relative bg-background/80 backdrop-blur-xl border border-white/20 rounded-3xl p-12 shadow-2xl">
-                            <div className="text-center space-y-4">
-                                {/* Animated icon container */}
-                                <div className="relative mx-auto w-20 h-20">
-                                    <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
-                                    <div className="relative w-full h-full rounded-full bg-gradient-to-br from-primary to-purple-500 flex items-center justify-center">
-                                        <ImagePlus className="h-10 w-10 text-white" />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <p className="text-xl font-semibold text-foreground">
-                                        {t('metadata.dropToLoad', '이미지를 드롭하여 메타데이터 불러오기')}
-                                    </p>
-                                    <p className="text-sm text-muted-foreground mt-1">
-                                        {t('metadata.extractDesc', 'PNG 파일에서 프롬프트와 설정을 추출합니다')}
-                                    </p>
-                                </div>
-                            </div>
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-scrim/70 p-4" role="status" aria-live="polite">
+                    <div className="w-full max-w-md rounded-panel border-2 border-primary bg-card p-6 text-center shadow-overlay sm:p-8">
+                        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-panel bg-accent text-primary">
+                            <ImagePlus className="h-8 w-8" />
                         </div>
+                        <p className="text-lg font-semibold text-foreground">
+                            {t('metadata.dropToLoad', '이미지를 드롭하여 메타데이터 불러오기')}
+                        </p>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                            {t('metadata.extractDesc', 'PNG 파일에서 프롬프트와 설정을 추출합니다')}
+                        </p>
                     </div>
                 </div>
             )}
 
             {/* Full Screen Image Area */}
-            <div className="w-full h-full flex items-center justify-center overflow-hidden">
+            <div className="flex h-full w-full items-center justify-center overflow-hidden pb-36 sm:pb-28 2xl:pb-0">
                 {previewImage ? (
                     // Generated Image with Context Menu
                     <ContextMenu>
                         <ContextMenuTrigger asChild>
-                            <div className="relative w-full h-full group cursor-context-menu">
+                            <div className="group relative h-full w-full cursor-context-menu">
                                 <img
                                     src={previewImage}
                                     alt="Generated preview"
                                     className="w-full h-full object-contain"
                                 />
                                 {/* Image Actions Overlay (Visible on hover) */}
-                                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                <div className="absolute right-3 top-3 flex gap-2 opacity-100 transition-opacity duration-standard sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
                                     <Button
                                         size="icon"
                                         variant="secondary"
-                                        className="rounded-full h-10 w-10 shadow-lg backdrop-blur-md bg-black/30 border border-white/10 hover:bg-black/50 text-white"
+                                        className="h-11 w-11 rounded-control border border-border bg-card/95 text-foreground shadow-panel hover:bg-accent"
                                         onClick={handleRegenerateWithMetadata}
                                         disabled={isGenerating}
+                                        aria-label={t('actions.regenerate', '재생성')}
                                     >
                                         <RotateCcw className="h-5 w-5" />
                                     </Button>
                                     <Button
                                         size="icon"
                                         variant="secondary"
-                                        className="rounded-full h-10 w-10 shadow-lg backdrop-blur-md bg-black/30 border border-white/10 hover:bg-black/50 text-white"
+                                        className="h-11 w-11 rounded-control border border-border bg-card/95 text-foreground shadow-panel hover:bg-accent"
                                         onClick={handleCopy}
+                                        aria-label={t('actions.copy', '복사')}
                                     >
                                         <Copy className="h-5 w-5" />
                                     </Button>
                                     <Button
                                         size="icon"
                                         variant="secondary"
-                                        className="rounded-full h-10 w-10 shadow-lg backdrop-blur-md bg-black/30 border border-white/10 hover:bg-black/50 text-white"
+                                        className="h-11 w-11 rounded-control border border-border bg-card/95 text-foreground shadow-panel hover:bg-accent"
                                         onClick={handleSaveAs}
+                                        aria-label={t('actions.saveAs', '저장')}
                                     >
                                         <Download className="h-5 w-5" />
                                     </Button>
@@ -507,36 +541,39 @@ export default function MainMode() {
                     </ContextMenu>
                 ) : isGenerating ? (
                     // Loading State (Only shown when no previous image exists)
-                    <div className="flex flex-col items-center justify-center z-10">
-                        <div className="relative mb-6">
-                            <div className="h-24 w-24 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-                            <ImagePlus className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-10 w-10 text-primary" />
+                    <div className="z-10 flex max-w-sm flex-col items-center justify-center px-6 text-center" role="status" aria-live="polite">
+                        <div className="relative mb-4 flex h-16 w-16 items-center justify-center rounded-panel border border-border bg-card shadow-panel">
+                            <div className="absolute inset-2 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+                            <ImagePlus className="h-6 w-6 text-primary" />
                         </div>
-                        <p className="text-xl font-medium text-foreground mb-3">
+                        <p className="text-base font-semibold text-foreground">
                             {batchCount > 1
                                 ? `${t('generate.loadingTitle')} (${currentBatch}/${batchCount})`
                                 : t('generate.loadingTitle')
                             }
                         </p>
-                        {/* Timer Display */}
-                        <div className="text-sm font-mono text-muted-foreground bg-muted/20 px-3 py-1 rounded-full">
+                        <p className="mt-2 font-mono text-xs tabular-nums text-muted-foreground">
                             {formatTime(elapsedTime)}s
                             {lastGenerationTime && (
-                                <span className="opacity-50 mx-1">/ ~{formatTime(lastGenerationTime)}s</span>
+                                <span className="mx-1 text-muted-foreground/70">/ ~{formatTime(lastGenerationTime)}s</span>
                             )}
-                        </div>
+                        </p>
                     </div>
                 ) : (
-                    // Empty State - Drop zone hint
-                    <div className="flex flex-col items-center justify-center text-muted-foreground/50">
-                        <div className="w-32 h-32 rounded-full bg-muted/20 flex items-center justify-center mb-6 border-4 border-dashed border-muted-foreground/20">
-                            <ImageIcon className="h-16 w-16" />
+                    // Empty state intentionally keeps one action and one import hint.
+                    <div className="flex max-w-md flex-col items-center justify-center px-6 text-center">
+                        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-panel border border-border bg-muted text-muted-foreground">
+                            <ImageIcon className="h-8 w-8" />
                         </div>
-                        <p className="text-xl font-medium text-foreground/80">{t('generate.emptyState')}</p>
-                        <p className="mt-2 text-sm text-muted-foreground">
+                        <h1 className="text-lg font-semibold text-foreground">{t('generate.emptyState')}</h1>
+                        <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
                             {t('generate.emptyDescription')}
                         </p>
-                        <p className="mt-4 text-xs text-muted-foreground/60">
+                        <Button variant="outline" className="mt-4" onClick={handleOpenPromptSheet}>
+                            <SlidersHorizontal className="h-4 w-4" />
+                            {t('generate.openPrompt', '프롬프트 열기')}
+                        </Button>
+                        <p className="mt-3 hidden text-xs text-muted-foreground sm:block">
                             {t('metadata.dropHint', '이미지를 드래그하여 메타데이터를 불러올 수 있습니다')}
                         </p>
                     </div>
@@ -545,62 +582,94 @@ export default function MainMode() {
 
             {/* Generation Progress Bar - Above Info Bar */}
             {isGenerating && (
-                <div className="absolute bottom-20 left-1/2 -translate-x-1/2 px-6 py-2.5 bg-black/40 backdrop-blur-md rounded-full border border-white/10 shadow-xl flex items-center gap-4 text-sm text-white/90 transition-all hover:bg-black/50">
-                    <div className="h-4 w-4 rounded-full border-2 border-primary/50 border-t-primary animate-spin" />
-                    <div className="flex flex-col">
-                        <span className="text-xs font-medium text-emerald-400 leading-none mb-0.5">
+                <div className="absolute bottom-36 left-1/2 z-20 flex w-[min(30rem,calc(100%-1rem))] -translate-x-1/2 items-center gap-3 rounded-panel border border-border bg-card px-3 py-2 shadow-overlay sm:bottom-28 2xl:bottom-16" role="status" aria-live="polite">
+                    <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3">
+                            <span className="truncate text-xs font-medium text-foreground">
                             {t('generate.generating')}
-                        </span>
-                        <span className="text-[10px] font-mono text-white/60 leading-none">
-                            {formatTime(elapsedTime)}s
-                            {lastGenerationTime && (
-                                <> / {formatTime(lastGenerationTime)}s</>
-                            )}
-                        </span>
-                    </div>
-                    {/* Streaming Progress */}
-                    {streamProgress > 0 && streamProgress < 100 && (
-                        <div className="flex items-center gap-2 ml-2">
-                            <div className="w-32 h-1.5 bg-white/20 rounded-full overflow-hidden">
+                            </span>
+                            <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+                                {formatTime(elapsedTime)}s
+                                {lastGenerationTime && <> / {formatTime(lastGenerationTime)}s</>}
+                            </span>
+                        </div>
+                        {streamProgress > 0 && streamProgress < 100 && (
+                            <div className="mt-2 flex items-center gap-2">
                                 <div
-                                    className="h-full bg-gradient-to-r from-emerald-400 to-primary transition-[width] duration-300 ease-out"
+                                    className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted"
+                                    role="progressbar"
+                                    aria-label={t('generate.progress', '생성 진행률')}
+                                    aria-valuemin={0}
+                                    aria-valuemax={100}
+                                    aria-valuenow={streamProgress}
+                                >
+                                <div
+                                        className="h-full bg-primary transition-[width] duration-standard ease-out"
                                     style={{ width: `${streamProgress}%` }}
                                 />
+                                </div>
+                                <span className="w-9 text-right font-mono text-xs tabular-nums text-primary">{streamProgress}%</span>
                             </div>
-                            <span className="text-[10px] font-mono text-emerald-400">{streamProgress}%</span>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             )}
 
-            {/* Bottom Info Bar Overlay */}
-            <div className="absolute bottom-6 left-1/2 flex max-w-[calc(100%-2rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-2xl border border-white/10 bg-black/40 px-4 py-2.5 text-xs text-white/90 shadow-xl backdrop-blur-md transition-all hover:bg-black/50 sm:gap-x-6 sm:rounded-full sm:px-6 sm:text-sm">
-                <span className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-                    <span className="opacity-60 uppercase tracking-wider">{t('settings.resolution')}</span>
-                    <span className="font-medium">{selectedResolution.width} × {selectedResolution.height}</span>
+            {/* Compact generation command dock. ThreeColumnLayout supplies the
+                full PromptPanel only at 2xl, so all smaller widths keep the core
+                prompt/generate path visible without hiding any advanced fields. */}
+            <div data-testid="main-command-dock" className="absolute inset-x-2 bottom-2 z-10 mx-auto grid max-w-4xl gap-2 rounded-panel border border-border bg-card p-2 shadow-overlay sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center 2xl:hidden">
+                <dl className="grid min-w-0 grid-cols-2 gap-x-3 gap-y-1 px-1 sm:grid-cols-4">
+                    <div className="min-w-0">
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('settings.model', '모델')}</dt>
+                        <dd className="truncate text-xs font-medium text-foreground" title={selectedModelName}>{selectedModelName}</dd>
+                    </div>
+                    <div className="min-w-0">
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('settings.resolution')}</dt>
+                        <dd className="truncate text-xs font-medium text-foreground">{selectedResolution.width} × {selectedResolution.height}</dd>
+                    </div>
+                    <div className="min-w-0">
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('settings.seed')}</dt>
+                        <dd>
+                            <button type="button" className="max-w-full truncate text-left font-mono text-xs text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={handleSeedAction} title={t('actions.copy', '복사')}>
+                                {previewSeed ?? seed ?? t('settings.random')}
+                            </button>
+                        </dd>
+                    </div>
+                    <div className="min-w-0">
+                        <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t('settingsPage.api.token', 'Anlas')}</dt>
+                        <dd className="truncate font-mono text-xs font-medium tabular-nums text-foreground">{visibleBalance?.toLocaleString() ?? 'N/A'}</dd>
+                    </div>
+                </dl>
+                <div className="grid grid-cols-2 gap-2 sm:flex">
+                    <Button variant="outline" className="min-w-0 sm:min-w-28" onClick={handleOpenPromptSheet}>
+                        <SlidersHorizontal className="h-4 w-4" />
+                        {t('prompt.title', '프롬프트')}
+                    </Button>
+                    <Button
+                        data-testid="main-generate-action"
+                        variant={isGenerating && generatingMode === 'main' ? 'destructive' : 'generate'}
+                        className="min-w-0 sm:min-w-32"
+                        onClick={handlePrimaryGeneration}
+                        disabled={(isGenerating && generatingMode !== 'main') || (isGenerating && isCancelled)}
+                    >
+                        {isGenerating && generatingMode === 'main' ? <Square className="h-4 w-4" /> : <ImagePlus className="h-4 w-4" />}
+                        {isGenerating && generatingMode === 'main' ? t('generate.cancel', '취소') : t('generate.button', '생성')}
+                    </Button>
+                </div>
+            </div>
+
+            {/* At 2xl the side panels are docked, leaving only image provenance
+                in this footer. It remains keyboard-operable over bright images. */}
+            <div className="absolute bottom-3 left-1/2 hidden -translate-x-1/2 items-center gap-4 rounded-panel border border-border bg-card px-3 py-2 text-xs text-foreground shadow-panel 2xl:flex">
+                <span className="whitespace-nowrap text-muted-foreground">
+                    {t('settings.resolution')} <strong className="ml-1 font-medium text-foreground">{selectedResolution.width} × {selectedResolution.height}</strong>
                 </span>
-                <div className="hidden h-4 w-px bg-white/20 min-[360px]:block" />
-                <span
-                    className={`flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap transition-opacity hover:opacity-80 ${previewSeed ? 'text-yellow-400 font-bold' : ''}`}
-                    onClick={() => {
-                        const targetSeed = previewSeed ?? seed
-                        if (targetSeed) {
-                            // If previewing, apply the seed
-                            if (previewSeed) {
-                                genStore.setSeed(previewSeed)
-                                genStore.setPreviewSeed(null) // Exit preview mode
-                                toast({ title: t('toast.seedApplied', '시드 적용됨'), variant: 'success' })
-                            } else {
-                                // Normal behavior: Copy to clipboard
-                                navigator.clipboard.writeText(targetSeed.toString())
-                                toast({ title: t('toast.copied', '복사됨'), variant: 'success' })
-                            }
-                        }
-                    }}
-                >
-                    <span className="opacity-60 uppercase tracking-wider">{t('settings.seed')}</span>
-                    <span className="font-mono">{previewSeed ?? seed ?? t('settings.random')}</span>
-                </span>
+                <span className="h-4 w-px bg-border" aria-hidden="true" />
+                <button type="button" className="whitespace-nowrap text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={handleSeedAction}>
+                    {t('settings.seed')} <strong className="ml-1 font-mono font-medium text-primary">{previewSeed ?? seed ?? t('settings.random')}</strong>
+                </button>
             </div>
 
             {/* Metadata Dialog */}
