@@ -314,3 +314,118 @@ comparison/integration이다. `tests/fixtures/README.md`에 따라 Phase 01 이�
 - Remaining risks: R-020 existing pre-Phase backup exposure; 기존 Open R-005/R-006/R-007/R-015/R-016/R-019 유지
 - Rollback procedure: unrelated `AGENTS.md` 변경과 user data를 보존하고 Phase 01 commit만 `git revert <phase-01-commit>`; 기존 backup 파일을 자동 삭제하지 않음
 - Next phase readiness: READY
+
+## Phase 02 — diagnostic kernel
+
+기준 시각: 2026-07-13T17:37:00+09:00 (Asia/Seoul)
+
+### Identity and scope
+
+| 항목 | 확인값 |
+| --- | --- |
+| Base HEAD | `f96d064c6affe24b35b38c220dd699cd05812500` |
+| Branch | `main` |
+| Initial working tree | ` M AGENTS.md` |
+| Dependency change | 없음; 기존 `tauri-plugin-log`와 Radix toast/dialog만 재사용 |
+| Generated tooling | `.codex/**`, `.omx/**` 추가 없음 |
+
+`AGENTS.md`의 수정은 Phase 시작 전부터 있던 unrelated user change이며 이 Phase에서
+수정·stage·commit하지 않는다.
+
+### Behavior and contracts
+
+- `DiagnosticEvent` v1, bounded in-memory `diagnostics-store`, common redactor, category
+  registry, exporter와 fixed-threshold `OperationMonitor`를 추가했다.
+- NovelAI client/stream/ref, Scene failure path, Main/Style Lab failure rendering,
+  OutputWriter/recovery, startup migration/recovery와 R2 deploy가 동일한 safe summary와
+  redacted developer projection을 사용한다. `payload.ts`와 successful request payload는
+  변경하지 않았다.
+- `NovelAIHttpError.message`와 Rust command error는 raw provider body를 포함하지 않는다.
+  raw body는 registry의 allowlisted/bounded projection만 통과하며 token, Authorization,
+  cookie/session/query token, presigned query, home/AppData path, prompt, image/base64/binary는
+  toast, drawer, clipboard, JSON export와 structured file logging에서 제외한다.
+- streaming progress는 monitor heartbeat를 갱신한다. monitor는 timeout/stalled event를
+  관찰할 뿐 Scene worker 수, dual-token, streaming single-worker, generationSessionId,
+  cancel/stale guard, retry/requeue, rotation, image-release를 변경하거나 요청을 abort하지
+  않는다.
+- Diagnostic toast는 user-action failure에만 non-blocking summary를 표시한다. startup event는
+  drawer에 남지만 launch overlay를 만들지 않으며, fatal startup/storage error는 기존 splash
+  recovery surface에서 safe summary만 보여 준다. Drawer는 native button keyboard/touch
+  activation, collapse/expand, summary/full copy와 JSON export를 제공한다.
+- production `tauri-plugin-log`은 `nais2_diagnostic` target만 file log로 허용하며,
+  1,000,000 byte file과 `KeepSome(5)` rotation을 사용한다.
+
+### Verification
+
+최초 `npm run test:diagnostics`는 kernel module/UI가 아직 없는 상태에서 exit 1로 실패해
+characterization baseline을 고정했다. 구현 후 해당 suite와 다음 final runs는 모두 exit 0이다.
+`test:composition`은 category suite를 포함하므로 test count를 합산하지 않는다.
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| `npm ci` | 0 | 391 packages; 392 audited | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; non-host optional dependency 표시는 expected |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,350 modules | `tsc && vite build` PASS |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | PASS |
+| `npm run test:composition` | 0 | 76 passed, 1 skipped files; 614 passed, 3 skipped tests | PASS |
+| `npm run test:migration` | 0 | 14 files, 123/123 | PASS |
+| `npm exec vitest run tests/services/output/output-writer.test.ts` | 0 | 1 file, 10/10 | final rollback-cleanup diagnostic reporting PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 25/25 | category mapping; HTTP/DNS/ZIP/disk fixtures; canary; monitor; clipboard/export; UI/log contract PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 12/12 | existing backup/restore secret-redaction gate remains PASS |
+| `npm run test:characterization` | 0 | 6 files, 40/40 | Scene/Main/Style Lab contract PASS |
+| `npm run test:nai-core` | 0 | 44/44 checks | payload and transport parity gate PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | PASS; expected fallback failure text is test fixture behavior |
+| `npm run test:responsive-layout` | 0 | 39 route/viewport scenarios | PASS after fixing diagnostic trigger/mobile dock and startup-toast overlap |
+| `npm run test:android-port` | 0 | 1 gate | PASS |
+| `npm run test:android-release-contract` | 0 | 1 gate | PASS |
+| `npm run test:remote-runtime-removal` | 0 | 1 gate | PASS; tracked Codex tooling 0 |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+
+Responsive gate의 첫 세 시도는 새 fixed diagnostic launcher가 390px mobile dock, startup
+diagnostic toast가 Style Lab header, 1536px fixed launcher가 existing CTA와 겹쳐 각각 exit
+1이었다. 각각 safe-area offset, startup toast suppression, user-action diagnostic이 있을 때만
+launcher rendering으로 수정한 뒤 final 39 scenario run이 exit 0이었다. 이는 수정 후 숨긴
+failure가 아니라 Phase 내 발견·수정된 UI regression이다.
+
+최종 rollback-cleanup reporting 보완 뒤에는 OutputWriter targeted suite, diagnostic suite,
+lint, build, cargo check와 `git diff --check`를 다시 실행해 모두 exit 0을 확인했다.
+
+### Artifacts and gaps
+
+- Frontend build: `dist/index.html`, `dist/assets/**` (ignored generated output)
+- Rust cache/output: `src-tauri/target/**` (ignored generated output)
+- Diagnostic source/test entrypoints: `src/domain/diagnostics/**`, `src/services/diagnostics/**`,
+  `src/stores/diagnostics-store.ts`, `src/components/diagnostics/**`, `tests/diagnostics/**`,
+  `npm run test:diagnostics`
+- Live NovelAI/R2 smoke: NOT RUN. Explicit credential opt-in was not provided; no `.env` or live
+  token was read.
+- Android debug APK/emulator and signed release/update/restore drill: NOT RUN in this Phase. The
+  baseline source-contract gates passed; generated Android mutation, signing authority and physical
+  target are outside this diagnostic-kernel scope.
+
+### HANDOFF REPORT
+
+- Phase: 02 — DIAGNOSTIC KERNEL
+- Base HEAD: `f96d064c6affe24b35b38c220dd699cd05812500`
+- Resulting local commit: `SELF` (this Phase commit; resolve with `git rev-parse HEAD`)
+- Changed files: diagnostic domain/service/store/component/tests; NovelAI/Rust safe error path;
+  Scene/Main/Style Lab/OutputWriter/startup/R2 integrations; package script and composition-v2 docs
+- Behavior added/changed: redacted central error event, fixed operation monitoring, non-blocking
+  safe toast/detail drawer/export, and structured bounded production diagnostic logging
+- Preserved contracts: CompositionEngine, repository/migration semantics, OutputWriter transaction
+  ownership, portable capability boundary, NAI payload parity, Scene orchestration/cancel/retry/
+  rotation/image release, old importers/readers/fixtures, user data, generated tooling exclusion
+- Tests and exit codes: Verification table above; all final gates exit 0. Responsive had three
+  in-phase UI failures before the final PASS and is recorded rather than concealed.
+- Artifact paths: `dist/**`, `src-tauri/target/**`, diagnostics source/tests, this ledger
+- Not tested and exact reason: live credential smoke, Android generated APK/emulator, signed release
+  drill and physical-device flow require opt-in credential, generated-project mutation, protected
+  signing authority or unavailable hardware.
+- Remaining risks: R-021 diagnostic adoption/redaction coverage is Watching; existing R-005,
+  R-006, R-007, R-015, R-016, R-019 and R-020 remain unchanged.
+- Rollback procedure: preserve unrelated `AGENTS.md` change and user data, then
+  `git revert <phase-02-commit>`; do not reset/clean. Existing pre-Phase diagnostic artifacts are
+  not automatically modified or deleted.
+- Next phase readiness: READY

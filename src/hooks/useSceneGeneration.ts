@@ -12,6 +12,7 @@ import { buildSceneGenerationParams } from '@/lib/scene-generation/build-scene-p
 import { reserveSceneFragmentSequenceProposal } from '@/lib/scene-generation/fragment-runtime'
 import { saveSceneResult } from '@/lib/scene-generation/save-scene-result'
 import { getRotationCharacterFolderName } from '@/lib/scene-output-path'
+import { reportDiagnostic } from '@/services/diagnostics/error-registry'
 
 const activeSceneWorkerCounts = new Map<number, number>()
 const runningSceneSlots = new Set<ApiSlot>()
@@ -99,9 +100,8 @@ function classifyProcessError(error: unknown): SceneProcessResult {
     }
 }
 
-function reportSceneFailure(slot: ApiSlot, result: SceneProcessResult, ctx: SceneWorkerContext): void {
+function reportSceneFailure(result: SceneProcessResult, ctx: SceneWorkerContext): void {
     const reason = result.reason || 'Generation failed'
-    console.error(`[Scene Worker slot ${slot}] generation ${result.status}:`, reason)
 
     if (result.status === 'fatal') {
         toast({ title: ctx.t('common.error', '오류'), description: reason, variant: 'destructive' })
@@ -141,7 +141,7 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
             : reserveSceneFragmentSequenceProposal(built.sequenceCommitProposal)
         if (built.sequenceCommitProposal !== null && sequenceLease === null) {
             const failure = { status: 'retryable', reason: 'Fragment sequence changed before reservation' } as const
-            reportSceneFailure(slot, failure, ctx)
+            reportSceneFailure(failure, ctx)
             return failure
         }
 
@@ -166,8 +166,15 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
         if (!isSessionAlive(ctx.sessionId)) return { status: 'cancelled' }
 
         if (!result.success || !result.imageData) {
+            reportDiagnostic(new Error(result.error || 'Scene generation failed'), {
+                operation: 'scene.generate',
+                stage: canUseStreaming ? 'stream' : 'request',
+                sceneId: scene.id,
+                correlationId: `scene-request:${ctx.sessionId}:${scene.id}:slot-${slot}`,
+                prompt: finalPrompt,
+            })
             const failure = classifyProcessError(result.error || 'Generation failed')
-            reportSceneFailure(slot, failure, ctx)
+            reportSceneFailure(failure, ctx)
             return failure
         }
 
@@ -191,7 +198,7 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
         if (!saved || !isSessionAlive(ctx.sessionId)) {
             if (sequenceConflict) {
                 const failure = { status: 'retryable', reason: 'Fragment sequence changed before commit' } as const
-                reportSceneFailure(slot, failure, ctx)
+                reportSceneFailure(failure, ctx)
                 return failure
             }
             return { status: 'cancelled' }
@@ -203,8 +210,14 @@ async function processSceneWithSlot(slot: ApiSlot, token: string, scene: SceneCa
         currentState.setGenerationProgress(currentState.completedCount + 1, currentState.totalQueuedCount)
         return { status: 'success' }
     } catch (error) {
+        reportDiagnostic(error, {
+            operation: 'scene.generate',
+            stage: 'request',
+            sceneId: scene.id,
+            correlationId: `scene-request:${ctx.sessionId}:${scene.id}:slot-${slot}`,
+        })
         const failure = classifyProcessError(error)
-        reportSceneFailure(slot, failure, ctx)
+        reportSceneFailure(failure, ctx)
         return failure
     } finally {
         sequenceLease?.release()

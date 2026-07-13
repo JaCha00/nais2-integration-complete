@@ -19,3 +19,6 @@
     credential을 포함할 수 있다. 현재 runtime은 새 artifact와 restore write를 sanitize하지만,
     기존 disk 파일을 자동 삭제·수정하지 않는다. 해당 파일은 사용자 주도 안전한 scan/폐기
     workflow가 제공되기 전까지 credential-bearing artifact로 취급해야 한다.
+15. Diagnostic file logging은 Phase 02부터 생성되는 redacted structured event만 대상으로
+    하며 1 MB active file과 최대 5개 rotation으로 제한된다. 이전 release의 console/file
+    artifact를 자동 검색·수정·삭제하지 않는다.

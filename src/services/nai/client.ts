@@ -13,6 +13,8 @@ import { NAI_ENDPOINTS } from '@/services/nai/endpoints'
 import { buildGenerateImagePayload } from '@/services/nai/payload'
 import { stripBase64Header } from '@/services/nai/refs'
 import { readNaiImageStream } from '@/services/nai/stream'
+import { recordDiagnosticEvent, reportDiagnostic } from '@/services/diagnostics/error-registry'
+import { OperationMonitor } from '@/services/diagnostics/operation-monitor'
 import {
     NovelAIHttpError,
     type AnlasInfo,
@@ -36,10 +38,6 @@ function isAbortError(error: unknown): boolean {
     return error instanceof DOMException && error.name === 'AbortError'
 }
 
-function errorToMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error)
-}
-
 function taggedImage(base64: string, params: GenerationParams): string {
     return shouldEmbedNais2Params(params.metadataMode)
         ? embedNais2Params(base64, buildNais2Params(params))
@@ -59,6 +57,12 @@ function makeSentPayloadSummary(sentPayload: string): string {
     return `sha256:${sha256Utf8(redactSentPayloadForMetadata(sentPayload))}`
 }
 
+const naiOperationMonitor = new OperationMonitor({
+    onObservation: recordDiagnosticEvent,
+    autoCheck: true,
+    pollIntervalMs: 1_000,
+})
+
 export async function getUserInfo(token: string): Promise<{ anlas: AnlasInfo } | null> {
     try {
         const result = await invoke<{ success: boolean; fixed?: number; purchased?: number; error?: string }>(
@@ -70,7 +74,7 @@ export async function getUserInfo(token: string): Promise<{ anlas: AnlasInfo } |
         const purchased = result.purchased ?? 0
         return { anlas: { fixed, purchased, total: fixed + purchased } }
     } catch (error) {
-        console.error('getUserInfo error:', error)
+        reportDiagnostic(error, { operation: 'nai.user-info', stage: 'invoke' })
         return null
     }
 }
@@ -88,9 +92,15 @@ export async function verifyToken(token: string): Promise<{
         if (result.valid && result.tier) {
             return { valid: true, tier: result.tier as 'paper' | 'tablet' | 'scroll' | 'opus' }
         }
-        return { valid: false, error: result.error || '인증 실패' }
+        const event = reportDiagnostic(new Error(result.error || '인증 실패'), {
+            operation: 'nai.verify-token',
+            stage: 'invoke',
+            category: 'auth',
+        })
+        return { valid: false, error: event.userSummary }
     } catch (error) {
-        return { valid: false, error: `Rust 통신 오류: ${error}` }
+        const event = reportDiagnostic(error, { operation: 'nai.verify-token', stage: 'invoke', category: 'auth' })
+        return { valid: false, error: event.userSummary }
     }
 }
 
@@ -105,6 +115,13 @@ export async function getAnlasBalance(token: string): Promise<{
             'get_anlas_balance',
             { token: token.trim() },
         )
+        if (!result.success) {
+            const event = reportDiagnostic(new Error(result.error || 'Anlas balance request failed'), {
+                operation: 'nai.anlas-balance',
+                stage: 'invoke',
+            })
+            return { success: false, error: event.userSummary }
+        }
         return {
             success: result.success,
             fixedTrainingStepsLeft: result.fixed,
@@ -112,7 +129,8 @@ export async function getAnlasBalance(token: string): Promise<{
             error: result.error,
         }
     } catch (error) {
-        return { success: false, error: `Rust invoke failed: ${error}` }
+        const event = reportDiagnostic(error, { operation: 'nai.anlas-balance', stage: 'invoke' })
+        return { success: false, error: event.userSummary }
     }
 }
 
@@ -123,10 +141,13 @@ export async function generateImage(
 ): Promise<GenerateImageResult> {
     if (!token) return { success: false, error: 'API 토큰이 필요합니다' }
 
+    const operation = naiOperationMonitor.start({ operation: 'nai.generate', stage: 'prepare', prompt: params.prompt })
     try {
+        operation.stageStart('payload')
         const adapted = await adaptGenerationParams(token, params)
         const payload = buildGenerateImagePayload(adapted.request, adapted.buildOptions)
         const sentPayload = JSON.stringify(payload)
+        operation.stageStart('request')
         const response = await CLIENT_FETCH(NAI_ENDPOINTS.generateImage, {
             method: 'POST',
             headers: {
@@ -143,6 +164,7 @@ export async function generateImage(
         }
 
         const sentPayloadSummary = makeSentPayloadSummary(sentPayload)
+        operation.stageStart('decode-response')
         const imageData = await firstZipEntryBase64(await response.arrayBuffer(), 'ZIP 파일이 비어있습니다.')
         return {
             success: true,
@@ -152,9 +174,15 @@ export async function generateImage(
         }
     } catch (error) {
         if (error instanceof NovelAIHttpError) throw error
-        if (isAbortError(error)) return { success: false, error: '요청이 취소되었습니다.' }
-        console.error('Generation error:', error)
-        return { success: false, error: `생성 오류: ${errorToMessage(error)}` }
+        const event = reportDiagnostic(error, {
+            operation: 'nai.generate',
+            stage: isAbortError(error) ? 'cancelled' : 'request',
+            prompt: params.prompt,
+            cancelled: isAbortError(error),
+        })
+        return { success: false, error: event.userSummary }
+    } finally {
+        operation.finish()
     }
 }
 
@@ -166,10 +194,13 @@ export async function generateImageStream(
 ): Promise<GenerateImageResult> {
     if (!token) return { success: false, error: 'API 토큰이 필요합니다' }
 
+    const operation = naiOperationMonitor.start({ operation: 'nai.generate-stream', stage: 'prepare', prompt: params.prompt })
     try {
+        operation.stageStart('payload')
         const adapted = await adaptGenerationParams(token, params, 'msgpack')
         const payload = buildGenerateImagePayload(adapted.request, adapted.buildOptions)
         const sentPayload = JSON.stringify(payload)
+        operation.stageStart('request')
         const response = await CLIENT_FETCH(NAI_ENDPOINTS.generateImageStream, {
             method: 'POST',
             headers: {
@@ -192,6 +223,7 @@ export async function generateImageStream(
         const sentPayloadSummary = makeSentPayloadSummary(sentPayload)
         const imageData = await readNaiImageStream(response.body, {
             onEvent: event => {
+                operation.heartbeat('streaming-progress')
                 if (typeof event.stepIx === 'number') {
                     const progress = Math.round((event.stepIx / totalSteps) * 100)
                     if (event.eventType === 'intermediate' && event.imageBase64 && event.stepIx > lastStepShown + 1) {
@@ -213,9 +245,15 @@ export async function generateImageStream(
         }
     } catch (error) {
         if (error instanceof NovelAIHttpError) throw error
-        if (isAbortError(error)) return { success: false, error: '요청이 취소되었습니다.' }
-        console.error('[Stream] Error:', error)
-        return { success: false, error: `스트리밍 오류: ${errorToMessage(error)}` }
+        const event = reportDiagnostic(error, {
+            operation: 'nai.generate-stream',
+            stage: isAbortError(error) ? 'cancelled' : 'stream',
+            prompt: params.prompt,
+            cancelled: isAbortError(error),
+        })
+        return { success: false, error: event.userSummary }
+    } finally {
+        operation.finish()
     }
 }
 
@@ -273,10 +311,8 @@ export async function augmentImage(
             imageData: await augmentViaFormData(token, imageBase64, width, height, reqType, defry, prompt),
         }
     } catch (error) {
-        if (error instanceof NovelAIHttpError) {
-            return { success: false, error: `API 오류 ${error.status}: ${error.responseBody}` }
-        }
-        return { success: false, error: `Augment error: ${errorToMessage(error)}` }
+        const event = reportDiagnostic(error, { operation: 'nai.augment', stage: 'request', prompt })
+        return { success: false, error: event.userSummary }
     }
 }
 
@@ -295,12 +331,20 @@ export async function upscaleImage(
             height,
             scale,
         })
+        if (!result.success) {
+            const event = reportDiagnostic(new Error(result.error || 'Upscale request failed'), {
+                operation: 'nai.upscale',
+                stage: 'invoke',
+            })
+            return { success: false, error: event.userSummary }
+        }
         return {
             success: result.success,
             imageData: result.image_data,
             error: result.error,
         }
     } catch (error) {
-        return { success: false, error: `Rust invoke failed: ${error}` }
+        const event = reportDiagnostic(error, { operation: 'nai.upscale', stage: 'invoke' })
+        return { success: false, error: event.userSummary }
     }
 }

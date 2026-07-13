@@ -15,6 +15,7 @@ npm run test:unit
 npm run test:payload-parity
 npm run test:composition
 npm run test:migration
+npm run test:diagnostics
 npm run test:characterization
 npm run test:nai-core
 npm run test:smart-tools

@@ -5,6 +5,7 @@ import './i18n'
 import { BACKUP_STORE_KEYS, migrateFromLocalStorage, migrateIndexedDBKeys, migrateRenamedLocalStorageKeys, ensureDbReady, isDbInitFailed, indexedDBStorage, type RetainedStoreMigrationResult } from './lib/indexed-db'
 import { createCurrentBackupEnvelopeV3, createFullAutoBackup } from './lib/auto-backup'
 import { setRuntimeCompositionAuthority } from './lib/composition-authority'
+import { reportDiagnostic } from './services/diagnostics/error-registry'
 
 // 자동 백업 상수
 const AUTO_BACKUP_KEY = 'nais2-auto-backup'
@@ -139,7 +140,7 @@ async function performAutoBackup() {
         
         console.log(`[AutoBackup] Complete - ${backups.length} backups stored`)
     } catch (err) {
-        console.error('[AutoBackup] Failed:', err)
+        reportDiagnostic(err, { operation: 'startup.auto-backup', stage: 'backup', category: 'persistence' })
     }
 }
 
@@ -225,7 +226,7 @@ async function checkDataIntegrity(): Promise<boolean> {
         
         return !hasDataLoss
     } catch (err) {
-        console.error('[Integrity] Check failed:', err)
+        reportDiagnostic(err, { operation: 'startup.integrity-check', stage: 'verify', category: 'persistence' })
         return true // 에러 시에는 그냥 진행
     }
 }
@@ -260,10 +261,10 @@ async function runPostRenderStartupTasks(): Promise<void> {
             console.warn(`[Startup] Output recovery is still pending for ${failure.transactionId}:`, failure.error)
         }
     }).catch(err => {
-        console.warn('[Startup] Output recovery scan failed:', err)
+        reportDiagnostic(err, { operation: 'startup.output-recovery', stage: 'scan', category: 'local_io' })
     })
     void startAssetProfileDiskSync().catch(err => {
-        console.warn('[Startup] Asset profile disk sync failed:', err)
+        reportDiagnostic(err, { operation: 'startup.asset-profile-sync', stage: 'sync', category: 'sync' })
     })
 
     if (!isDbInitFailed()) {
@@ -274,11 +275,11 @@ async function runPostRenderStartupTasks(): Promise<void> {
                 console.warn('[Startup] Data integrity check reported possible data loss')
             }
         }).catch(err => {
-            console.warn('[Startup] Data integrity check failed:', err)
+            reportDiagnostic(err, { operation: 'startup.integrity-check', stage: 'verify', category: 'persistence' })
         })
 
         void performAutoBackup().catch(err => {
-            console.warn('[Startup] Auto-backup failed:', err)
+            reportDiagnostic(err, { operation: 'startup.auto-backup', stage: 'backup', category: 'persistence' })
         })
 
         // Disk auto-backup supplements B's existing localStorage startup backup.
@@ -288,7 +289,7 @@ async function runPostRenderStartupTasks(): Promise<void> {
                 console.log(`[Startup] Disk auto-backup written: ${result.entry.fileName}`)
             }
         }).catch(err => {
-            console.warn('[Startup] Disk auto-backup failed:', err)
+            reportDiagnostic(err, { operation: 'startup.disk-auto-backup', stage: 'backup', category: 'persistence' })
         })
 
         // FragmentStore owns embedded-content migration and verified repository
@@ -300,7 +301,7 @@ async function runPostRenderStartupTasks(): Promise<void> {
             await useCharacterStore.getState().ensureImagesLoaded()
             console.log('[Startup] Reference images loaded from files')
         } catch (err) {
-            console.error('[Startup] Failed to load reference images:', err)
+            reportDiagnostic(err, { operation: 'startup.reference-images', stage: 'load', category: 'local_io' })
         }
     }, 100)
 }
@@ -308,7 +309,7 @@ async function runPostRenderStartupTasks(): Promise<void> {
 function schedulePostRenderStartupTasks() {
     window.setTimeout(() => {
         void runPostRenderStartupTasks().catch(err => {
-            console.warn('[Startup] Post-render task initialization failed:', err)
+            reportDiagnostic(err, { operation: 'startup.post-render', stage: 'initialize' })
         })
     }, 0)
 }
@@ -323,8 +324,13 @@ async function startApp() {
     // CRITICAL: Ensure IndexedDB is ready before any migration
     const dbReady = await ensureDbReady()
     if (!dbReady) {
-        console.error('[Startup] IndexedDB initialization failed!')
-        showSplashError('데이터베이스 초기화 실패. 앱이 정상 작동하지 않을 수 있습니다.')
+        const event = reportDiagnostic(new Error('IndexedDB initialization failed'), {
+            operation: 'startup.indexeddb',
+            stage: 'initialize',
+            category: 'persistence',
+            fatal: true,
+        })
+        showSplashError(event.userSummary)
         // 계속 진행하되, 데이터 저장이 안될 수 있음
     }
     
@@ -342,7 +348,7 @@ async function startApp() {
             console.log('[Startup] IndexedDB key migration complete')
         } catch (err) {
             legacySourceCopyHealthy = false
-            console.error('[Startup] IndexedDB key migration failed:', err)
+            reportDiagnostic(err, { operation: 'startup.indexeddb-migration', stage: 'migrate', category: 'persistence' })
         }
 
         try {
@@ -352,7 +358,7 @@ async function startApp() {
             console.log('[Startup] Legacy localStorage key migration complete')
         } catch (err) {
             legacySourceCopyHealthy = false
-            console.error('[Startup] Legacy localStorage key migration failed:', err)
+            reportDiagnostic(err, { operation: 'startup.local-storage-key-migration', stage: 'migrate', category: 'persistence' })
         }
 
         // Step 2: Migrate localStorage to IndexedDB for ALL stores
@@ -364,7 +370,7 @@ async function startApp() {
             console.log('[Startup] LocalStorage migration complete')
         } catch (err) {
             legacySourceCopyHealthy = false
-            console.error('[Startup] LocalStorage migration failed:', err)
+            reportDiagnostic(err, { operation: 'startup.local-storage-migration', stage: 'migrate', category: 'persistence' })
         }
 
         try {
@@ -374,10 +380,18 @@ async function startApp() {
                 legacySourceCopyHealthy ? {} : { authority: 'legacy' },
             )
             if (!legacySourceCopyHealthy) {
-                console.error('[Startup] Composition v2 activation blocked because a retained source copy was not verified')
+                reportDiagnostic(new Error('Composition v2 activation blocked because a retained source copy was not verified'), {
+                    operation: 'startup.composition-migration',
+                    stage: 'authority',
+                    category: 'persistence',
+                })
             }
             if (migration.status === 'failed') {
-                console.error('[Startup] Composition migration retained legacy authority:', migration.error)
+                reportDiagnostic(new Error(migration.error || 'Composition migration retained legacy authority'), {
+                    operation: 'startup.composition-migration',
+                    stage: 'migrate',
+                    category: 'persistence',
+                })
             } else {
                 console.log(
                     `[Startup] Composition migration ${migration.status}; authority=${migration.authority}`,
@@ -386,20 +400,20 @@ async function startApp() {
         } catch (err) {
             // The migration transaction is fail-closed and never deletes old
             // stores. Startup can safely continue on the legacy authority.
-            console.error('[Startup] Composition migration failed; legacy authority retained:', err)
+            reportDiagnostic(err, { operation: 'startup.composition-migration', stage: 'migrate', category: 'persistence' })
         }
 
         try {
             setSplashStage('Hydrating migrated stores')
             await rehydrateCompositionConnectedStores()
         } catch (err) {
-            console.error('[Startup] Migrated store hydration failed; forcing legacy authority:', err)
+            reportDiagnostic(err, { operation: 'startup.store-hydration', stage: 'hydrate', category: 'persistence' })
             try {
                 const { applyCompositionAuthorityFeatureFlag } = await import('./lib/composition-migration-startup')
                 await applyCompositionAuthorityFeatureFlag('legacy')
             } catch (authorityError) {
                 setRuntimeCompositionAuthority('legacy')
-                console.error('[Startup] Failed to persist hydration rollback authority:', authorityError)
+                reportDiagnostic(authorityError, { operation: 'startup.store-hydration', stage: 'rollback-authority', category: 'persistence' })
             }
         }
         
@@ -427,6 +441,11 @@ async function startApp() {
 
 // Start the app - DO NOT add any code after this that runs in parallel!
 startApp().catch(err => {
-    console.error('[Startup] Fatal error:', err)
-    showSplashError(`시작 오류: ${err.message || '알 수 없는 오류'}`)
+    const event = reportDiagnostic(err, {
+        operation: 'startup',
+        stage: 'fatal',
+        category: 'persistence',
+        fatal: true,
+    })
+    showSplashError(event.userSummary)
 })
