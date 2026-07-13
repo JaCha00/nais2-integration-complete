@@ -41,6 +41,13 @@ const IGNORED_LEGACY_KEY_TEST_ALLOWLIST = [
     'tests/fixtures/legacy/**',
     'tests/migration/**',
 ]
+// Repository-local Codex agent/plugin instructions are developer tooling, not
+// application source. They use "marketplace" for Codex plugin distribution and
+// may retain historical planning language. Release contracts below ensure this
+// directory cannot enter the Vite/Tauri bundle or the staged source export.
+const NON_RUNTIME_DEVELOPMENT_TOOLING_ALLOWLIST = [
+    '.codex/**',
+]
 
 function normalize(relativePath) {
     return relativePath.replaceAll('\\', '/')
@@ -54,6 +61,11 @@ function isAllowlisted(relativePath) {
         || IGNORED_LEGACY_KEY_RUNTIME_ALLOWLIST.has(relativePath)
         || relativePath.startsWith('tests/fixtures/legacy/')
         || relativePath.startsWith('tests/migration/')
+        || isNonRuntimeDevelopmentTooling(relativePath)
+}
+
+function isNonRuntimeDevelopmentTooling(relativePath) {
+    return relativePath.startsWith('.codex/')
 }
 
 async function listRepositoryFiles() {
@@ -94,8 +106,9 @@ function findMatches(relativePath, content) {
     return matches
 }
 
+const repositoryFiles = await listRepositoryFiles()
 const matches = []
-for (const relativePath of await listRepositoryFiles()) {
+for (const relativePath of repositoryFiles) {
     let bytes
     try {
         bytes = await readFile(path.join(root, relativePath))
@@ -109,11 +122,15 @@ for (const relativePath of await listRepositoryFiles()) {
 
 const allowed = matches.filter(match => isAllowlisted(match.path))
 const forbidden = matches.filter(match => !isAllowlisted(match.path))
+const developmentToolingMatches = matches.filter(match => isNonRuntimeDevelopmentTooling(match.path))
 
 const tauriConfig = JSON.parse(await readFile(path.join(root, 'src-tauri/tauri.conf.json'), 'utf8'))
 const releaseInputIsDistOnly = tauriConfig?.build?.frontendDist === '../dist'
 const viteConfig = await readFile(path.join(root, 'vite.config.ts'), 'utf8')
 const legacySourceIsNotPublicInput = !/publicDir\s*:\s*['"](?:\.\.\/)?legacy(?:\/|['"])/i.test(viteConfig)
+const repositoryRootIsNotPublicInput = !/publicDir\s*:\s*['"](?:\.|\.\/)['"]/i.test(viteConfig)
+const publicReleaseScript = await readFile(path.join(root, 'scripts/create-public-release.ps1'), 'utf8')
+const publicSourceExcludesCodexTooling = /['"]\.codex['"]/i.test(publicReleaseScript)
 
 console.log('Remote runtime removal search gate')
 console.log(`Search terms (${SEARCH_TERMS.length}): ${SEARCH_TERMS.join(', ')}`)
@@ -121,11 +138,21 @@ console.log('Historical allowlist:', HISTORICAL_ALLOWLIST.join(', '))
 console.log('Documentation allowlist:', DOCUMENTATION_ALLOWLIST.join(', '))
 console.log('Ignored-key runtime allowlist:', [...IGNORED_LEGACY_KEY_RUNTIME_ALLOWLIST].join(', '))
 console.log('Ignored-key test/fixture allowlist:', IGNORED_LEGACY_KEY_TEST_ALLOWLIST.join(', '))
+console.log('Non-runtime development tooling allowlist:', NON_RUNTIME_DEVELOPMENT_TOOLING_ALLOWLIST.join(', '))
+console.log(`Allowlisted development tooling matches: ${developmentToolingMatches.length}`)
 console.log(`Allowlisted matches: ${allowed.length}`)
 console.log(`Release frontend input: ${tauriConfig?.build?.frontendDist ?? '(missing)'}`)
 
-if (!releaseInputIsDistOnly || !legacySourceIsNotPublicInput) {
-    console.error('Release input must remain ../dist and must not expose legacy/** as a Vite public directory.')
+if (
+    !releaseInputIsDistOnly
+    || !legacySourceIsNotPublicInput
+    || !repositoryRootIsNotPublicInput
+    || !publicSourceExcludesCodexTooling
+) {
+    console.error(
+        'Release input must remain ../dist, Vite publicDir must not expose the repository root or legacy/**, '
+        + 'and public source staging must exclude .codex/**.',
+    )
     process.exit(1)
 }
 

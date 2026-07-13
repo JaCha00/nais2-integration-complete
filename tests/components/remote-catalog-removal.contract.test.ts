@@ -78,4 +78,18 @@ describe('removed remote catalog runtime contract', () => {
         expect(fragment).toContain('<AutocompleteTextarea')
         expect(fragment).toContain('await updateFile(selectedFileId, {')
     })
+
+    it('keeps repository-only Codex tooling outside runtime residue and release inputs', async () => {
+        const gate = await source('scripts/verify-remote-runtime-removal.mjs')
+        const vite = await source('vite.config.ts')
+        const publicRelease = await source('scripts/create-public-release.ps1')
+
+        expect(gate).toContain('NON_RUNTIME_DEVELOPMENT_TOOLING_ALLOWLIST')
+        expect(gate).toContain("relativePath.startsWith('.codex/')")
+        expect(gate).toContain('developmentToolingMatches')
+        expect(gate).toContain('repositoryRootIsNotPublicInput')
+        expect(gate).toContain('publicSourceExcludesCodexTooling')
+        expect(vite).not.toMatch(/publicDir\s*:\s*['"](?:\.|\.\/)['"]/i)
+        expect(publicRelease).toMatch(/['"]\.codex['"]/i)
+    })
 })
