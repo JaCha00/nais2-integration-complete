@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { ThreeColumnLayout } from '@/components/layout/ThreeColumnLayout'
 import { Toaster } from '@/components/ui/toaster'
 import { DiagnosticsSurface } from '@/components/diagnostics/DiagnosticsSurface'
+import { CredentialVaultDialog } from '@/components/credentials/CredentialVaultDialog'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { useSceneGeneration } from '@/hooks/useSceneGeneration'
 import { useUpdateChecker } from '@/hooks/useUpdateChecker'
@@ -78,6 +79,7 @@ function App() {
         <TooltipProvider delayDuration={300}>
             <BrowserRouter>
                 <AppContent />
+                <CredentialVaultDialog />
                 <Toaster />
                 <DiagnosticsSurface />
             </BrowserRouter>

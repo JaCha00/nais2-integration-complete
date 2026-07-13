@@ -101,7 +101,7 @@ export const SUPPORTED_BACKUP_STORE_VERSIONS: Readonly<Record<string, SupportedB
     'nais2-character-prompts': { version: 2, schemaVersion: 2 },
     'nais2-presets': { version: 2, schemaVersion: 2 },
     'nais2-settings': { version: 2, schemaVersion: 2 },
-    'nais2-auth': { version: 2, schemaVersion: 2 },
+    'nais2-auth': { version: 3, schemaVersion: 2 },
     'nais2-scenes': { version: 1, schemaVersion: 2 },
     'nais2-character-rotation': { version: 2, schemaVersion: 2 },
     'nais2-shortcuts': { version: 2, schemaVersion: 2 },

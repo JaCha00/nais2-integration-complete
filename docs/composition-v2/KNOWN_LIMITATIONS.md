@@ -16,9 +16,10 @@
 12. Main cancel은 session을 즉시 무효화하지만 request가 끝날 때까지 `isGenerating`을 유지해 재요청/429를 방지한다. Android plugin request가 cancel 완료를 반환하지 않으면 Cancel 버튼이 남을 수 있다. Scene cancel은 현재 HTTP AbortSignal을 전달하지 않고 commit만 차단한다.
 13. Character reference와 uncached vibe는 base generation이 무료여도 별도 Anlas 비용 가능성이 있으므로 이번 live smoke에서 제외했다.
 14. Phase 01 이전에 생성된 manual/auto backup과 per-store snapshot은 raw `nais2-auth`
-    credential을 포함할 수 있다. 현재 runtime은 새 artifact와 restore write를 sanitize하지만,
-    기존 disk 파일을 자동 삭제·수정하지 않는다. 해당 파일은 사용자 주도 안전한 scan/폐기
-    workflow가 제공되기 전까지 credential-bearing artifact로 취급해야 한다.
+    credential을 포함할 수 있다. 현재 runtime은 새 artifact와 restore write를 sanitize하고
+    vault UI에서 managed artifact cleanup을 제공하지만, 기존 파일을 자동 삭제·수정하지
+    않는다. 사용자가 별도 destructive confirmation을 실행하기 전까지 credential-bearing
+    artifact로 취급해야 한다. 관리 경로 밖으로 복사한 backup은 자동 scan 대상이 아니다.
 15. Diagnostic file logging은 Phase 02부터 생성되는 redacted structured event만 대상으로
     하며 1 MB active file과 최대 5개 rotation으로 제한된다. 이전 release의 console/file
     artifact를 자동 검색·수정·삭제하지 않는다.
@@ -28,3 +29,19 @@
 17. Critical Zustand store는 immediate transaction/readback을 사용하므로 매우 큰 Scene 또는
     generation state의 연속 변경은 이전 debounce 경로보다 write 비용이 높을 수 있다. Layout,
     theme, shortcut, tools, update UI preference만 best-effort debounce allowlist에 남아 있다.
+18. Stronghold passphrase를 잊거나 encrypted snapshot이 손상되면 NAIS2는 plaintext fallback을
+    제공하지 않는다. NovelAI/R2 provider에서 credential을 재발급하고 새 vault에 다시
+    등록해야 한다.
+19. Backup/restore의 `CredentialRef`는 secret을 포함하지 않는다. 다른 device 또는 vault
+    snapshot이 없는 profile로 복원하면 last-four metadata가 보여도 generation 전 credential
+    재등록이 필요하다.
+20. Phase 04 자동 검증은 migration interruption, wrong passphrase classification, deletion,
+    redaction, minimum capability와 host Cargo build를 다룬다. Android x86_64 debug APK와
+    emulator에서 Stronghold create/unlocked/lock 및 encrypted snapshot 생성은 확인했다.
+    Process-restart re-unlock, desktop native lifecycle과 authenticated dual-token generation은
+    명시적 live credential opt-in 없이 실행하지 않았다.
+21. Windows에서 fresh Android cross-build 시 Stronghold가 사용하는
+    `libsodium-sys-stable`의 Unix `configure`를 직접 실행하지 못할 수 있다. Phase 04 local
+    APK는 공식 crate archive를 WSL+NDK로 target static library로 만든 뒤 crate가 제공하는
+    process-local `SODIUM_LIB_DIR`로 link해 통과했다. 이 generated binary는 tracked source가
+    아니며 일반 재현 build는 Linux host 또는 같은 verified prebuild step이 필요하다.

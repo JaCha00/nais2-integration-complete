@@ -3,6 +3,7 @@ import {
     compositionMigrationSourceHash,
     type CompositionMigrationSourceSnapshot,
 } from '@/lib/composition-migration-runtime'
+import type { CredentialRef } from '@/domain/credentials/types'
 
 export const AUTH_BACKUP_STORE_KEY = 'nais2-auth' as const
 const COMPOSITION_MIGRATION_BACKUP_STORE_KEY = 'nais2-composition-migration-backup'
@@ -22,16 +23,48 @@ export interface BackupProjectionResult {
 }
 
 const DISPLAY_TIERS = new Set(['paper', 'tablet', 'scroll', 'opus'])
+const AUTH_STATE_VERSION = 3
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function projectCredentialRef(value: unknown, expectedId: string): CredentialRef | null {
+    if (!isRecord(value)
+        || typeof value.id !== 'string'
+        || !/^[a-z0-9:_-]{1,96}$/i.test(value.id)
+        || value.id !== expectedId
+        || value.kind !== 'novelai-token'
+        || typeof value.lastFour !== 'string'
+        || value.lastFour.length !== 4
+        || typeof value.createdAt !== 'string'
+        || !Number.isFinite(Date.parse(value.createdAt))
+        || typeof value.updatedAt !== 'string'
+        || !Number.isFinite(Date.parse(value.updatedAt))) {
+        return null
+    }
+    const verifiedAt = typeof value.verifiedAt === 'string' && Number.isFinite(Date.parse(value.verifiedAt))
+        ? value.verifiedAt
+        : null
+    return {
+        id: value.id,
+        kind: value.kind,
+        lastFour: value.lastFour,
+        createdAt: value.createdAt,
+        updatedAt: value.updatedAt,
+        ...(verifiedAt === null ? {} : { verifiedAt }),
+    }
+}
+
 function projectAuthState(value: unknown): Record<string, unknown> {
     const state = isRecord(value) ? value : {}
     const projected: Record<string, unknown> = {
-        isVerified: false,
-        isVerified2: false,
+        slot1CredentialRef: projectCredentialRef(state.slot1CredentialRef, 'novelai-slot-1'),
+        slot2CredentialRef: projectCredentialRef(state.slot2CredentialRef, 'novelai-slot-2'),
+        slot1Enabled: typeof state.slot1Enabled === 'boolean' ? state.slot1Enabled : true,
+        slot2Enabled: typeof state.slot2Enabled === 'boolean' ? state.slot2Enabled : true,
+        tier: null,
+        tier2: null,
     }
 
     if (state.tier === null || (typeof state.tier === 'string' && DISPLAY_TIERS.has(state.tier))) {
@@ -40,25 +73,17 @@ function projectAuthState(value: unknown): Record<string, unknown> {
     if (state.tier2 === null || (typeof state.tier2 === 'string' && DISPLAY_TIERS.has(state.tier2))) {
         projected.tier2 = state.tier2
     }
-    if (typeof state.slot1Enabled === 'boolean') projected.slot1Enabled = state.slot1Enabled
-    if (typeof state.slot2Enabled === 'boolean') projected.slot2Enabled = state.slot2Enabled
-
     return projected
 }
 
 function projectAuthPayload(value: unknown): unknown {
-    if (!isRecord(value)) return projectAuthState(value)
-
-    if (Object.prototype.hasOwnProperty.call(value, 'state')) {
-        return {
-            ...(typeof value.version === 'number' && Number.isFinite(value.version)
-                ? { version: value.version }
-                : {}),
-            state: projectAuthState(value.state),
-        }
+    const state = isRecord(value) && Object.prototype.hasOwnProperty.call(value, 'state')
+        ? value.state
+        : value
+    return {
+        state: projectAuthState(state),
+        version: AUTH_STATE_VERSION,
     }
-
-    return projectAuthState(value)
 }
 
 function projectSerializedAuth(raw: unknown): string {

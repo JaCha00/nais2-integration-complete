@@ -41,7 +41,8 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 - Phase 19: retired online catalog/remote auth/deep-link runtime와 dependency 제거.
 - Phase 20 구현: OutputWriter/metadata v2, canonical authoring studio, Main/Scene information architecture, portable resource/capability adapter, Android/responsive contracts.
 - 최종 cleanup: caller audit, definition-only export 정리, CI compatibility gates와 운영 문서 연결.
-- 후속 hardening Phase 01~03: secret-safe backup projection, redacted diagnostic kernel, persistence correctness/rescue startup.
+- 후속 hardening Phase 01~04: secret-safe backup projection, redacted diagnostic kernel,
+  persistence correctness/rescue startup, Stronghold-backed Credential Vault와 AuthState v3.
 
 Production authority cutover와 legacy builder retirement는 별도 release gate로 남는다.
 
@@ -72,6 +73,12 @@ Production authority cutover와 legacy builder retirement는 별도 release gate
 실행 명령과 환경 요구사항은 [DEVELOPER_VERIFICATION.md](./DEVELOPER_VERIFICATION.md)를 따른다. 최종 로컬 run은 clean install, lint, TypeScript/Vite build, 72-suite/578-test Vitest aggregate, payload/migration/characterization/NAI/smart tools, responsive sizes, Android contracts, dependency tree, retired-runtime residue gate, Cargo와 debug APK를 포함한다.
 
 Emulator에서 Asset Profile의 session 진단값 `lastLoadedAt`이 exact legacy source hash를 매번 바꾸는 문제가 발견됐다. 이 값은 persistence projection에서 제외했고, 기존 persisted 값이 한 번 정리된 뒤 연속 무변경 재시작이 `already-current; authority=legacy`로 안정됨을 확인했다.
+
+Phase 04에서는 official Stronghold plugin, AuthState v3 reference persistence와 two-phase legacy
+credential migration을 추가했다. Android x86_64 debug APK가 Stronghold/libsodium을 포함해
+빌드됐고 emulator에서 vault create/unlocked/lock과 encrypted snapshot 생성을 확인했다.
+Windows cross-build는 transitive libsodium prebuild 환경 제한이 있어 R-025와 developer
+verification 절차에 분리 기록한다.
 
 Ignored `.env`의 Opus token으로 실제 NovelAI live smoke도 실행했다. Raw endpoint 512×512/1 step PNG와 production client 512×512/4 steps fixed-seed T2I, msgpack streaming final, Metadata v2/redacted payload hash, AbortSignal cancel이 모두 통과했다. Android v2 Main은 WebView CORS를 피하도록 capability-scoped Tauri HTTP transport로 연결했고 실제 request/cancel 상태까지 진입했지만, emulator에서 standard/stream 응답이 제한 시간 안에 완료되지 않아 Android image/output commit은 성공으로 선언하지 않는다.
 

@@ -918,6 +918,7 @@ export const useGenerationStore = create<GenerationState>()(
                 const token = slot1Token?.token
 
                 if (!token) {
+                    useAuthStore.getState().requestCredentialUnlock()
                     toast({
                         title: i18n.t('toast.tokenRequired.title'),
                         description: i18n.t('toast.tokenRequired.desc'),

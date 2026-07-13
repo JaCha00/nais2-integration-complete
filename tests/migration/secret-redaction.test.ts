@@ -79,15 +79,15 @@ function expectSecretFree(value: unknown): void {
 
 function expectSafeAuthProjection(value: unknown): void {
     expect(value).toEqual({
-        version: 2,
         state: {
-            isVerified: false,
-            isVerified2: false,
+            slot1CredentialRef: null,
+            slot2CredentialRef: null,
             tier: 'opus',
             tier2: 'tablet',
             slot1Enabled: true,
             slot2Enabled: false,
         },
+        version: 3,
     })
     expectSecretFree(value)
 }
@@ -120,6 +120,48 @@ function oldV3EnvelopeWithRawAuth(): ReturnType<typeof createBackupEnvelopeV3> {
 }
 
 describe('secret-safe backup projection', () => {
+    it('preserves only validated AuthState v3 references and display metadata', async () => {
+        const credentialRef = {
+            id: 'novelai-slot-1',
+            kind: 'novelai-token',
+            lastFour: '1234',
+            createdAt: '2026-07-13T00:00:00.000Z',
+            updatedAt: '2026-07-13T00:00:00.000Z',
+            verifiedAt: '2026-07-13T00:00:00.000Z',
+        }
+        const storage = new MemoryStorage()
+        storage.values.set(AUTH_STORE_KEY, JSON.stringify({
+            version: 3,
+            state: {
+                slot1CredentialRef: credentialRef,
+                slot2CredentialRef: null,
+                slot1Enabled: true,
+                slot2Enabled: false,
+                tier: 'opus',
+                tier2: null,
+                token: SECRET_CANARIES[0],
+                anlas: { total: 999 },
+            },
+        }))
+
+        const backup = await exportBackupFromStorage(storage, {
+            storeKeys: [AUTH_STORE_KEY],
+            purpose: 'manual-full',
+        })
+        expect(backup[AUTH_STORE_KEY]).toEqual({
+            state: {
+                slot1CredentialRef: credentialRef,
+                slot2CredentialRef: null,
+                slot1Enabled: true,
+                slot2Enabled: false,
+                tier: 'opus',
+                tier2: null,
+            },
+            version: 3,
+        })
+        expectSecretFree(backup)
+    })
+
     it('redacts auth data from the full backup storage export', async () => {
         const storage = new MemoryStorage()
         storage.values.set(AUTH_STORE_KEY, JSON.stringify(authPayload()))

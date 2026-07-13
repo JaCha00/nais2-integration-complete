@@ -375,6 +375,17 @@ async function runStartupMigrations(): Promise<void> {
         reportDiagnostic(err, { operation: 'startup.local-storage-migration', stage: 'migrate', category: 'persistence', severity: 'error', recoverable: true })
     }
 
+    // AuthState v3 is hydrated from strict storage after legacy key migration.
+    // Raw v2 credentials stay read-only until the user unlocks Stronghold and
+    // the two-phase vault write/readback transaction can finish.
+    try {
+        setSplashStage('Hydrating credential vault metadata')
+        const { initializeAuthCredentialState } = await import('./stores/auth-store')
+        await initializeAuthCredentialState()
+    } catch (err) {
+        reportDiagnostic(err, { operation: 'startup.credential-vault', stage: 'hydrate', category: 'auth', severity: 'error', recoverable: true })
+    }
+
     try {
         setSplashStage('Migrating Composition data')
         const { runStartupCompositionMigration } = await import('./lib/composition-migration-startup')

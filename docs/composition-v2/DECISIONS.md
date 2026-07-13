@@ -192,3 +192,44 @@ save entry point를 import/mount하지 않고 retry, redacted diagnostic export,
 safe exit만 제공한다. 반면 healthy DB에서 Composition migration이 실패하면 old source를
 삭제하지 않고 legacy authority의 normal App으로 진행한다. Rescue mode는 migration failure를
 대체하는 일반 오류 화면이 아니다.
+
+## D-021 — native credential backend는 공식 Stronghold plugin을 사용한다
+
+상태: Accepted
+
+`CredentialVault` backend는 `@tauri-apps/plugin-stronghold`와
+`tauri-plugin-stronghold` 2.3.1을 정확 버전으로 사용한다. Native startup은 app-local salt
+file과 공식 `Builder::with_argon2`를 사용하며 passphrase는 unlock call 동안만 전달하고
+NAIS2 state/storage/log에 보관하지 않는다. Capability는 initialize, client create/load,
+store get/save/remove, snapshot save/destroy에 필요한 명시적 permission만 desktop/mobile에
+부여하고 `stronghold:default`는 사용하지 않는다.
+
+현재 NovelAI transport와 dual-token worker가 renderer token을 소비하므로 plugin의 공식 JS
+API를 `CredentialVault` service 안에 감쌌다. 별도 Rust command를 추가하면 같은 secret이
+새 custom IPC를 한 번 더 통과하며 renderer session memory를 제거하지 못한다. 따라서 이번
+phase에서는 custom command보다 공식 plugin IPC 하나가 secret 노출 면적이 작다. 향후 native
+HTTP/keychain/biometric backend가 renderer plaintext까지 제거할 수 있을 때 interface 뒤에서
+교체한다.
+
+직접 암호화, Base64/plaintext fallback, hardcoded machine key와 custom crypto format은
+복구성과 검증 가능한 KDF/secret-store 경계를 약화하므로 기각했다. Dependency는 frontend
+Stronghold API module과 Rust Stronghold/crypto graph를 추가하며 Android/iOS target도 같은
+공식 plugin 경계를 사용한다. License는 MIT OR Apache-2.0이다. Dev build KDF 성능을 위해
+공식 setup 권고의 `scrypt` dev-profile optimization만 추가하고 release cryptography는
+변경하지 않는다.
+
+## D-022 — AuthState v3는 reference만 persist하고 migration marker를 마지막에 쓴다
+
+상태: Accepted
+
+AuthState v3 durable projection은 두 `CredentialRef`, slot enabled, tier/display metadata만
+저장한다. `token`, `token2`, session plaintext, verified runtime flag와 Anlas cache는 저장하지
+않는다. Plaintext는 unlocked app session의 Zustand memory에만 있고 lock 시 즉시 비운다.
+
+Legacy v2 migration은 startup hydration 뒤 사용자 unlock을 기다린다. Strict source read와
+secret detection 뒤 vault write, exact vault readback, sanitized v3 strict write/readback,
+남아 있는 localStorage source의 sanitized write/readback을 차례로 수행하고 마지막에만
+completion marker를 기록한다. Vault/marker 단계에서 중단되면 marker를 기록하지 않으며 raw
+secret을 v3 payload로 쓰거나 plaintext fallback으로 전환하지 않는다. Marker 직전 중단은
+v3 reference를 vault에서 재검증한 뒤 resume한다. 기존 backup은 자동 삭제하지 않고 별도
+privacy warning과 명시적 destructive confirmation을 거친 managed-artifact cleanup만 제공한다.

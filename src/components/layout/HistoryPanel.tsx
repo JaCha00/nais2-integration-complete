@@ -738,6 +738,7 @@ export function HistoryPanel() {
 
         const token = useAuthStore.getState().token
         if (!token) {
+            useAuthStore.getState().requestCredentialUnlock()
             toast({ title: t('toast.tokenRequired.title', '토큰 필요'), variant: 'destructive' })
             return
         }

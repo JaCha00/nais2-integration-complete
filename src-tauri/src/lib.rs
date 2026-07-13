@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+#[cfg(mobile)]
+use tauri::Manager;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VerifyTokenResult {
@@ -791,6 +793,15 @@ pub fn run() {
             record_diagnostic_event,
         ])
         .setup(|_app| {
+            let credential_vault_salt = _app
+                .path()
+                .app_local_data_dir()
+                .map_err(|error| error.to_string())?
+                .join("credential-vault.salt");
+            _app.handle().plugin(
+                tauri_plugin_stronghold::Builder::with_argon2(&credential_vault_salt).build(),
+            )?;
+
             #[cfg(target_os = "macos")]
             {
                 if let Some(window) = _app.get_webview_window("main") {

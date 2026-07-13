@@ -21,6 +21,20 @@ Composition cutover 또는 migration release 전에 다음을 보존한다.
 
 backup에는 auth credential을 새로 복제하지 않으며, diagnostic artifact는 redaction 규칙을 적용한다.
 
+## Credential vault rollback
+
+AuthState v3 migration이 vault write/readback과 sanitized storage readback을 완료하면 raw token을
+IndexedDB/localStorage에 되돌리지 않는다. Phase 04 source commit을 revert해도 Stronghold
+snapshot을 자동 삭제하지 않으며 encrypted secret을 plaintext legacy AuthState로 export하는
+rollback은 금지한다.
+
+Phase 04 rollback이 필요한 경우 unrelated working-tree와 user data를 보존한 채 해당 commit만
+`git revert`한다. 이전 binary는 AuthState v3 reference로 generation credential을 읽을 수
+없으므로 provider credential 재입력 또는 forward-fix build가 필요하다. 기존 legacy backup을
+사용하는 경우 먼저 credential-bearing artifact로 격리하고 restore가 raw credential을 durable
+storage에 재기록하지 않는 현재 preflight 경계를 유지한다. Vault/snapshot 삭제는 별도 사용자
+확인과 recovery 판단 없이 수행하지 않는다.
+
 ## Authority rollback
 
 Repository는 committed v2 document를 지우지 않고 authority만 `legacy`로 변경할 수 있다. Operational hotfix는 `applyCompositionAuthorityFeatureFlag('legacy')`와 repository `setAuthority('legacy')` 경계를 사용하며, 임의로 IndexedDB JSON을 수정하지 않는다. Startup hydration failure도 같은 fail-closed path를 사용한다.

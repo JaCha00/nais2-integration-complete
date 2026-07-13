@@ -17,6 +17,8 @@ npm run test:composition
 npm run test:migration
 npm run test:diagnostics
 npm run test:persistence
+npm run test:credential-vault
+npm run test:secret-redaction
 npm run test:characterization
 npm run test:nai-core
 npm run test:smart-tools
@@ -27,7 +29,7 @@ npm run test:remote-runtime-removal
 cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
-`test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다. `test:persistence`는 Vitest fault suite 뒤에 실제 Chromium startup에서 blocked IndexedDB rescue keyboard/touch gate를 실행한다.
+`test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다. `test:persistence`는 Vitest fault suite 뒤에 실제 Chromium startup에서 blocked IndexedDB rescue keyboard/touch gate를 실행한다. `test:credential-vault`는 AuthState v2→v3 two-phase migration, interruption/resume, wrong passphrase/unavailable/delete, legacy backup scan과 native source/capability 계약을 실행한다. `test:secret-redaction`은 export/snapshot/restore projection에서 AuthState v3 reference만 남고 raw secret/runtime cache가 제거되는지 별도로 검증한다.
 
 ## Android
 
@@ -41,6 +43,14 @@ npm run test:android-debug -- --apk src-tauri/gen/android/app/build/outputs/apk/
 ```
 
 Emulator smoke는 startup, migration, Main/Scene generate-cancel 접근, sheets, AppData persistence, unsupported capability explanation, process recreation을 확인한다. NovelAI token이나 network credential이 없으면 authenticated generation/image output은 실행 불가로 명시하고 성공으로 간주하지 않는다.
+
+Windows host에서 Stronghold의 transitive `libsodium-sys-stable`이 Android용 Unix
+`configure`를 실행하지 못하면 code regression과 분리해 기록한다. Linux Android build host를
+사용하거나 공식 crate archive에서 해당 target의 static library를 검증 생성한 뒤 crate가
+정의한 `SODIUM_LIB_DIR`를 해당 build process에만 설정한다. Generated library를 repository에
+track하거나 Base64/plain credential fallback으로 우회하지 않는다. Windows PATH에서는
+standalone Rust보다 `%USERPROFILE%\.cargo\bin` rustup shim이 먼저 와야 installed Android
+target sysroot를 사용한다.
 
 ## Required evidence
 

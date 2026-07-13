@@ -473,7 +473,7 @@ authority/readback 경계를 교체하지 않고 공통 IndexedDB failure semant
 - rescue screen은 재시도, bounded/redacted diagnostic JSON export, desktop/Android backup
   위치 안내와 안전 종료를 제공한다. native buttons, focus-visible ring과 44px touch target을
   사용한다.
-- Electron, better-sqlite3, Sharp, Marketplace/Supabase/catalog/deep-link, dependency와
+- Electron, better-sqlite3, Sharp, retired remote catalog/auth/deep-link, dependency와
   lockfile 변경은 없다. NAI payload, Scene orchestration, OutputWriter, portable capability,
   old backup/v1/metadata importer와 migration fixture는 변경하지 않았다.
 
@@ -551,4 +551,151 @@ directory는 만들지 않았다.
   pre-existing open risks remain
 - Rollback procedure: unrelated `AGENTS.md`와 user data를 보존하고
   `git revert <phase-03-commit>`; reset/clean이나 destructive migration을 사용하지 않음
+- Next phase readiness: READY
+
+## Phase 04 — credential vault
+
+기준 시각: 2026-07-13T19:26:54+09:00 (Asia/Seoul)
+
+### Identity and scope
+
+| 항목 | 확인값 |
+| --- | --- |
+| Base HEAD | `4c7df7299b9fa2ebb1966ad1bc6c1ee90191366a` |
+| Branch | `main` |
+| Initial working tree | ` M AGENTS.md` |
+| Dependency change | exact `@tauri-apps/plugin-stronghold`/`tauri-plugin-stronghold` 2.3.1; MIT OR Apache-2.0 |
+| Generated tooling | `.codex/**`, `.omx/**` 추가 없음 |
+
+`AGENTS.md`는 Phase 시작 전부터 존재한 unrelated user change이며 수정·stage·commit하지
+않는다. Official Stronghold plugin은 frontend API module과 Rust Stronghold/crypto graph
+(Cargo lock 신규 package 85개)를 추가한다. Production build에서 Tauri vendor chunk는
+30.34 kB(gzip 7.97 kB), auth-store chunk는 36.87 kB(gzip 11.97 kB)였고 Rust/APK size
+증가는 별도 release artifact 비교 대상이다. 직접 암호화, Base64/plain fallback과 hardcoded
+machine key는 도입하지 않았다.
+
+### Behavior and contracts
+
+- `CredentialVault`, `CredentialRef`, 세 credential kind와 safe error code를 domain boundary로
+  추가했다. Runtime backend는 official Stronghold JS API만 감싸고 app-local Argon2 salt,
+  encrypted snapshot, exact write/readback/delete verification과 metadata manifest를 소유한다.
+  Custom Rust secret command를 추가하지 않아 기존 renderer NovelAI transport 외 별도 secret
+  IPC surface를 만들지 않았다.
+- Desktop/mobile capability는 initialize, client create/load, store get/save/remove, snapshot
+  save/destroy만 명시하며 broad default permission을 사용하지 않는다. Rust startup은
+  `Builder::with_argon2`로 plugin을 등록한다.
+- AuthState v3는 NovelAI slot 1/2 reference, enabled, tier metadata만 strict storage에 저장한다.
+  Token, verified runtime state, Anlas와 session plaintext는 Zustand memory에만 있고 vault
+  lock/process restart에 비운다. Auth slot parser와 backup projection은 stable NovelAI ref
+  ID/kind 외 R2/arbitrary ref를 거부한다.
+- Post-hydration v2 migration은 raw source detection → user unlock → vault set/readback → v3
+  IndexedDB write/readback → retained localStorage sanitize/readback → completion marker 순서다.
+  Vault write 또는 marker 직전 종료 fixture에서 marker/source 상태를 검증하고 retry/resume한다.
+  실패 시 v3에 raw secret을 쓰거나 plaintext storage로 전환하지 않는다.
+- Settings raw-token reveal/input card를 `CredentialVaultDialog`와 last-four-only summary로
+  교체했다. Register/replace/delete/reverify/enable/lock, wrong-passphrase/unavailable 상태,
+  legacy backup privacy warning과 별도 destructive cleanup confirmation을 제공한다.
+- 새 manual/auto/snapshot/export는 AuthState v3 reference projection만 포함한다. Explicit
+  cleanup은 managed local auto/full/snapshot artifact를 값 노출 없이 structural scan하고
+  credential-bearing artifact 전체만 삭제한다. 기존 파일과 user data는 자동 삭제하지 않는다.
+- Main, Scene, Style Lab, Smart Tools, metadata regeneration과 character rotation 시작/resume가
+  active session token 부재 시 global unlock dialog를 요청한다. Existing `getActiveTokens()`
+  순서와 dual-token/streaming worker 동작은 변경하지 않았다.
+- CompositionEngine, repository/migration authority, OutputWriter transaction, portable resource/
+  capability adapter, `payload.ts`, Scene worker/session/cancel/stale/retry/requeue/rotation/image
+  release, old backup/v1 profile/legacy metadata readers와 fixtures를 교체하거나 삭제하지 않았다.
+
+### Verification
+
+구현 전 Phase 전용 tests는 missing domain/backend/UI/plugin 때문에 expected exit 1이었고,
+기존 `test:secret-redaction` 12/12와 characterization 40/40은 baseline으로 통과했다. 구현 중
+Auth backup expectation을 v2에서 v3로 바꾸기 전 secret-redaction 10건과 Android source
+import regex 1건이 실패했고 계약/fixture를 고친 뒤 final pass했다. 다음 표의 final test는
+모두 raw credential, passphrase, prompt, image payload를 출력하지 않았다.
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| `npm ci` | 0 | 392 packages; 393 audited | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; non-host optional dependency 표시는 expected |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,360 modules | `tsc && vite build` PASS |
+| `npx tsc --noEmit` | 0 | TypeScript project | PASS |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | PASS |
+| `npm run test:composition` | 0 | 82 passed, 1 skipped files; 643 passed, 3 skipped tests | final aggregate PASS |
+| `npm run test:migration` | 0 | 14 files, 124/124 | PASS; v3 backup projection/legacy restore 포함 |
+| `npm run test:diagnostics` | 0 | 3 files, 25/25 | PASS |
+| `npm run test:persistence` | 0 | 3 files, 13/13 + 1 Chromium rescue scenario | PASS |
+| `npm run test:credential-vault` | 0 | 3 files, 15/15 | two slots, interruption/resume, wrong passphrase, unavailable, delete, cleanup, source/capability, ref-kind gate PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | v3 ref-only backup/snapshot/export/restore PASS |
+| `npm run test:characterization` | 0 | 6 files, 40/40 | dual-token generation/Scene/Style Lab contract PASS |
+| `npm run test:nai-core` | 0 | 44/44 checks | payload/transport boundary PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | PASS; primary provider failure line은 fallback fixture behavior |
+| `npm run test:responsive-layout` | 0 | 39 route/viewport scenarios | PASS |
+| `npm run test:android-port` | 0 | 1 contract gate | minimum Stronghold mobile capability와 Argon2 registration 포함 PASS |
+| `npm run test:android-release-contract` | 0 | 1 contract gate | PASS |
+| first `npm run test:remote-runtime-removal` | 1 | forbidden documentation match 1 | 기존 Phase 03 ledger의 제품명 표현 발견; runtime residue 아님 |
+| final `npm run test:remote-runtime-removal` | 0 | authoritative search gate | 표현을 generic retired-stack wording으로 고친 뒤 forbidden 0, tracked tooling 0 |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | Stronghold host graph PASS |
+| first Android x86_64 debug build | 1 | Rust sysroot | standalone Rust가 rustup shim보다 앞선 host PATH environment failure |
+| rustup-path Android build | 1 | libsodium C build | Windows가 transitive Unix `configure`를 직접 실행하지 못함; source regression과 분리 |
+| WSL+NDK libsodium prebuild attempt 1 | 1 | archive step | Windows `llvm-ar`가 WSL path를 해석하지 못함 |
+| WSL+NDK libsodium prebuild attempt 2 | 1 | install step | static library 생성 성공 후 dependency-file path 때문에 `make install`만 실패 |
+| first `SODIUM_LIB_DIR` link | 1 | native link | crate host cfg가 `liblibsodium.a` 이름을 요구함을 확인 |
+| final process-local static link + Android build | 0 | 1 universal debug APK | Stronghold/libsodium/NAIS2 x86_64 Rust와 Gradle APK PASS; tracked binary 없음 |
+| `npm run test:android-debug -- --apk ...` | 0 | 1 APK | package `com.sunakgo.nais2.dev`, v2.8.1, minSdk 24, targetSdk 36, x86_64 verified |
+| emulator vault UI/lifecycle | 0 | create → unlocked → lock | Android API 35; privacy warning, password input, two slots, encrypted snapshot names와 final locked state 확인 |
+
+Android emulator QA는 installed debug user data를 보존하고 `pm clear`를 실행하지 않았다.
+UI tree는 allowlisted i18n key/bounds만 출력하고 temporary XML을 즉시 삭제했다. 첫 두 create
+interaction은 soft keyboard가 좌표를 바꿔 app onClick에 도달하지 않은 automation failure였고,
+UI-tree focus + Enter로 같은 enabled button을 activation해 native create/unlocked/lock을
+통과했다. Screenshot은 prompt/user data가 artifact에 남지 않도록 생성하지 않았다.
+
+### Artifacts, gaps, and risk
+
+- Frontend build: `dist/index.html`, `dist/assets/**` (ignored generated output)
+- Android debug APK:
+  `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`
+- Rust/Android/WSL helper artifacts: `src-tauri/target/**`, `src-tauri/gen/android/**`
+  (ignored; official archive-derived target static library 포함, tracked source 아님)
+- Phase source/tests: `src/domain/credentials/**`, `src/services/credentials/**`,
+  `src/components/credentials/**`, `tests/credentials/**`, `npm run test:credential-vault`
+- Emulator app-private evidence: `credential-vault.salt`, `nais2-credentials-v1.hold`; emulator는
+  final locked 후 종료. Passphrase는 random process memory에만 있었고 출력/파일 저장하지 않음.
+- Live NovelAI/R2 and authenticated dual-token generation: NOT RUN. Explicit credential opt-in이
+  없고 ignored `.env`나 existing provider token을 읽지 않았다.
+- Desktop native Stronghold lifecycle와 Android process-restart re-unlock: NOT RUN. Android
+  create/lock은 통과했지만 ephemeral QA passphrase를 보존하지 않았고 desktop test profile을
+  생성하지 않았다.
+- Signed release/update/rollback drill: NOT RUN. Protected signing authority, immutable release
+  baseline과 install target이 필요한 external gate다.
+- Remaining risk는 R-020 legacy copies, R-023 passphrase recovery, R-024 authenticated native
+  matrix, R-025 Windows libsodium cross-build와 기존 open production authority/network gate다.
+
+### HANDOFF REPORT
+
+- Phase: 04 — CREDENTIAL VAULT
+- Base HEAD: `4c7df7299b9fa2ebb1966ad1bc6c1ee90191366a`
+- Resulting local commit: `SELF` (this Phase commit; resolve with `git rev-parse HEAD`)
+- Changed files: credential domain/Stronghold backend/AuthState v3 migration/storage/cleanup;
+  auth/generation callers; vault UI/settings/i18n; backup projection; Tauri dependency/plugin/
+  capability; credential/redaction/Android contracts; composition-v2 operations docs
+- Behavior added/changed: native encrypted credential storage, post-unlock two-phase v2→v3
+  migration, ref-only durable auth/backup state, global unlock request and last-four-only management
+- Preserved contracts: CompositionEngine, repository/migration, OutputWriter, portable capability,
+  NAI payload fixture parity, Scene worker/dual-token/streaming/session/cancel/retry/rotation/image
+  release, compatibility importers/readers/fixtures, non-destructive user data
+- Tests and exit codes: Verification table above; final executable gates exit 0 after recorded
+  contract/environment/automation failures were corrected or explicitly separated
+- Artifact paths: `dist/**`, debug APK path, ignored `src-tauri/target/**` and
+  `src-tauri/gen/android/**`, Phase source/tests and this ledger
+- Not tested and exact reason: live NovelAI/R2 + authenticated dual-token lacked explicit credential
+  opt-in; desktop native profile was not mutated; Android re-unlock passphrase was intentionally not
+  persisted; signed release drill lacked protected authority/baseline
+- Remaining risks: R-020, R-023, R-024, R-025 and pre-existing production authority/network gates
+- Rollback procedure: preserve unrelated `AGENTS.md`, encrypted vault and user data, then
+  `git revert <phase-04-commit>`; never restore raw token to IndexedDB/localStorage. Older code cannot
+  consume AuthState v3 refs, so use credential re-entry or a forward fix; vault deletion requires
+  separate user confirmation.
 - Next phase readiness: READY

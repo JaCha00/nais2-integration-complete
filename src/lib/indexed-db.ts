@@ -100,6 +100,7 @@ const BEST_EFFORT_PERSISTENCE_KEYS = new Set([
 
 export const CRITICAL_PERSISTENCE_KEYS = Object.freeze([
     'nais2-auth',
+    'nais2-auth-v3-migration-complete',
     'nais2-scenes',
     'nais2-composition-repository',
     'nais2-composition-migration-backup',
