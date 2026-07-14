@@ -61,6 +61,10 @@ export interface OutputWriteResult {
 }
 
 export interface OutputWriterRequest {
+    /** Pre-bound by durable queue before any file is staged. */
+    transactionId?: string
+    /** Stable queue linkage only; never contains prompt or credential material. */
+    sourceJobId?: string
     destination: OutputWriterDestination
     imageBytes: Uint8Array
     imageDataUrl: string
@@ -69,6 +73,11 @@ export interface OutputWriterRequest {
     canCommit: () => boolean
     commitWorkflow: (result: OutputWriteResult) => void | Promise<void>
     rollbackWorkflow?: (result: OutputWriteResult, cause: unknown) => void | Promise<void>
+    /**
+     * The workflow callback commits an immutable durable authority. Once it
+     * succeeds, journal cleanup may be retried but files must never roll back.
+     */
+    terminalWorkflowCommit?: boolean
     onPhase?: (phase: OutputWriterPhase) => void
 }
 
@@ -88,6 +97,7 @@ interface OutputRecoveryJournal {
     format: 'nais2-output-transaction'
     version: 1
     transactionId: string
+    sourceJobId?: string
     createdAt: string
     updatedAt: string
     phase: RecoveryJournalPhase
@@ -102,6 +112,12 @@ export interface OutputRecoveryResult {
     transactionId: string
     action: 'rolled-back' | 'retried' | 'cleaned' | 'missing' | 'failed'
     error?: string
+}
+
+export interface PendingQueueOutputTransaction {
+    transactionId: string
+    sourceJobId: string
+    phase: RecoveryJournalPhase
 }
 
 export interface RetryRecoveryOptions {
@@ -161,6 +177,10 @@ function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
         || typeof value.createdAt !== 'string'
         || typeof value.updatedAt !== 'string'
         || typeof value.fileName !== 'string'
+        || (value.sourceJobId !== undefined
+            && (typeof value.sourceJobId !== 'string'
+                || value.sourceJobId.length === 0
+                || value.sourceJobId.length > 256))
         || !Array.isArray(value.artifacts)
         || !isRecord(value.directory)) {
         throw new Error('Invalid output recovery journal')
@@ -200,6 +220,7 @@ function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
         format: 'nais2-output-transaction',
         version: 1,
         transactionId: value.transactionId,
+        ...(typeof value.sourceJobId === 'string' ? { sourceJobId: value.sourceJobId } : {}),
         createdAt: value.createdAt,
         updatedAt: value.updatedAt,
         phase: value.phase as RecoveryJournalPhase,
@@ -331,7 +352,17 @@ export class OutputWriter {
                     || request.metadata.imageFormat === 'webp'
                 return sidecarNeeded && await this.platform.exists(childOutputRef(directory, toSidecarFileName(candidate)))
             })
-            const transactionId = this.createTransactionId()
+            const transactionId = request.transactionId ?? this.createTransactionId()
+            if (!/^[A-Za-z0-9-]{1,128}$/.test(transactionId)) {
+                throw new OutputWriterError(
+                    'resolve-destination',
+                    'Output transaction identity is not a safe bounded filename component',
+                )
+            }
+            if (request.sourceJobId !== undefined
+                && (request.sourceJobId.length === 0 || request.sourceJobId.length > 256)) {
+                throw new OutputWriterError('resolve-destination', 'Source job identity is not bounded')
+            }
             const prepared = this.metadataWriter.prepare(request.imageBytes, request.metadata)
             const imageFinal = childOutputRef(directory, fileName)
             const artifacts: JournalArtifact[] = [{
@@ -365,6 +396,7 @@ export class OutputWriter {
                 format: 'nais2-output-transaction',
                 version: 1,
                 transactionId,
+                ...(request.sourceJobId === undefined ? {} : { sourceJobId: request.sourceJobId }),
                 createdAt: timestamp,
                 updatedAt: timestamp,
                 phase: 'staged',
@@ -491,6 +523,7 @@ export class OutputWriter {
             try {
                 await this.persistJournal(journal)
             } catch (error) {
+                if (request.terminalWorkflowCommit === true) throw error
                 try { await request.rollbackWorkflow?.(result, error) } catch { /* file rollback remains mandatory */ }
                 journal.phase = 'rollback-required'
                 try { await this.persistJournal(journal) } catch { /* previous files-committed journal remains */ }
@@ -578,6 +611,29 @@ export class OutputWriter {
             results.push(await this.recoverTransaction(transactionId, options))
         }
         return results
+    }
+
+    async inspectPendingQueueTransactions(): Promise<PendingQueueOutputTransaction[]> {
+        const transactionIds = await this.platform.listJournalIds()
+        const result: PendingQueueOutputTransaction[] = []
+        for (const transactionId of transactionIds) {
+            const bytes = await this.platform.readJournal(transactionId)
+            if (bytes === null) continue
+            try {
+                const journal = parseJournal(bytes)
+                if (journal.sourceJobId !== undefined) {
+                    result.push({
+                        transactionId: journal.transactionId,
+                        sourceJobId: journal.sourceJobId,
+                        phase: journal.phase,
+                    })
+                }
+            } catch {
+                // Generic recovery owns malformed/orphan journals. Queue recovery
+                // must not guess ownership from a filename or output path.
+            }
+        }
+        return result.sort((left, right) => left.transactionId.localeCompare(right.transactionId))
     }
 }
 

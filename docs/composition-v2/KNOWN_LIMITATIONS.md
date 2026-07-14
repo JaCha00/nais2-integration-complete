@@ -77,12 +77,26 @@
     일반 검증에서 credential opt-in이 없어 실행하지 않았다. M500_MIKU는 fresh cold launch 뒤 PID를
     유지하고 새 crash buffer는 비어 있었지만 과거 `DEPENDENCY DIED` exit-info는 남아 있고
     authenticated Android output matrix를 대체하지 않는다.
-27. Durable queue는 독립 domain/repository와 recovery policy까지만 구현됐다. Main/Scene enqueue,
-    network execution, UI와 generation-store cutover는 없으므로 현재 사용자 generation은 queue DB에
-    기록되지 않는다.
-28. Managed AppData resource record는 digest/reference와 missing-resource 판정을 제공하지만 source/mask
-    bytes를 enqueue 시 복사하는 workflow producer는 아직 없다. Volatile memory resource는 restart-safe로
-    가장하지 않고 explicit non-resumable/blocked로만 저장한다.
-29. Queue의 10,000-job, transaction abort와 upgrade 검증은 `fake-indexeddb` 기반 deterministic test다.
-    실제 browser quota/eviction과 multi-tab process scheduling은 아직 별도 integration evidence가 없으며
-    cutover 전 real-browser fault matrix가 필요하다.
+27. Phase 08부터 Main/Scene의 일반 generation은 durable queue에 등록된다. 한 release 동안 legacy
+    `queueCount` reader와 explicit execution rollback을 유지하며 Scene rotation은 retained legacy
+    session/worker를 사용한다. Queue 변환이나 durable 성공이 legacy count를 자동 삭제하지 않는다.
+28. Source/mask/character/vibe resource는 enqueue 시 managed AppData content address로 materialize되고
+    digest를 검증한다. Content dedup은 있지만 reference-aware garbage collection은 아직 없으므로 장기
+    queue 사용의 disk quota는 release observation 대상이다. Queue/UI가 임의로 resource를 삭제하지 않는다.
+29. Queue의 10,000-job, transaction abort, restart, lease와 retry 검증은 `fake-indexeddb` 기반
+    deterministic test다. Responsive browser contract도 `/queue`의 5개 viewport를 실행하지만 실제 browser
+    quota/eviction, 장시간 background throttling과 multi-process scheduling evidence는 없다.
+30. Sequential fragment wildcard를 가진 multi-job batch는 앞 job의 sequence commit 전에 snapshot되므로
+    같은 proposal base를 가질 수 있다. Runtime CAS는 stale publication과 duplicate artifact를 막지만
+    Phase 08은 job 간 durable sequence dependency chain을 미리 만들지 않는다. 충돌 item은 retry/fail될 수
+    있으며 counter correctness를 위해 CAS를 완화하지 않는다.
+31. Queue Center는 DOM row를 virtualize하지만 selected batch의 lightweight projections를 polling한다.
+    10,000-job bounded DOM은 통과했으나 더 큰 장기 queue의 IndexedDB scan/paint profiling은 미실행이다.
+32. Startup은 하나의 desktop app process가 queue coordinator를 소유한다고 가정하고 이전 process lease를
+    즉시 회수한다. Multi-tab/multi-process durable execution은 지원 완료가 아니며 별도 fencing이 필요하다.
+33. Live NovelAI credential을 사용한 kill/restart/files-committed recovery와 actual disk-full drill은 일반
+    baseline에서 실행하지 않았다. Synthetic transport, fake IndexedDB, OutputWriter fault injection으로
+    401/429/decode/ENOSPC/cancel/recovery ordering은 검증했다.
+34. Durable job은 성공 artifact와 transaction linkage를 요구하므로 Main의 legacy `autoSave=false` memory-only
+    결과와 동일하지 않다. Legacy memory-only 동작이 필요하면 compatibility release의 explicit legacy
+    execution을 사용한다.

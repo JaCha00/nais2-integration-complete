@@ -317,7 +317,21 @@
         "library": "라이브러리",
         "settings": "설정",
         "styleLab": "그림체 연구소",
-        "promptEditor": "프롬프트 에디터"
+        "promptEditor": "프롬프트 에디터",
+        "queue": "큐 센터"
+    },
+    "queue": {
+        "title": "큐 센터",
+        "enqueued": "영구 큐에 추가됨",
+    "enqueuedCount": "{{count}}개 작업이 큐 센터에 준비되었습니다.",
+    "enqueueFailed": "큐 등록에 실패했습니다",
+    "legacyPending": "기존 Scene 대기 항목 {{count}}개가 있습니다.",
+    "legacyRetained": "변환 시 현재 매개변수를 스냅샷하며 rollback을 위해 기존 개수는 유지합니다.",
+    "convertLegacy": "durable job으로 변환",
+    "convertLegacyTitle": "기존 Scene 큐를 변환할까요?",
+    "convertLegacyDescription": "현재 매개변수와 필수 리소스를 durable job으로 스냅샷합니다. rollback을 위해 기존 queueCount는 그대로 유지됩니다.",
+    "convertLegacyConfirm": "변환",
+    "failureSummary": "실패 또는 차단 {{count}}개 · 진단 열기"
     },
     "assetModuleStudioV2": {
         "wrapper": {

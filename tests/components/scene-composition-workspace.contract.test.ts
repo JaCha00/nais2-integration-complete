@@ -54,7 +54,7 @@ describe('Scene composition workspace information architecture', () => {
         expect(editAction).toBeLessThan(dropdownStart)
     })
 
-    it('keeps import/export/rotation/queue grouped while preserving the worker orchestration seam', async () => {
+    it('keeps import/export/rotation/queue grouped while preserving the worker rollback seam', async () => {
         const sceneMode = await source('src/pages/SceneMode.tsx')
         const generationHook = await source('src/hooks/useSceneGeneration.ts')
 
@@ -70,7 +70,10 @@ describe('Scene composition workspace information architecture', () => {
         }
         expect(sceneMode).toContain('startNewGenerationSession()')
         expect(sceneMode).toContain('cancelSceneGeneration()')
+        expect(sceneMode).toContain('enqueueCurrentSceneQueue()')
+        expect(sceneMode).toContain("queueExecutionAuthority === 'legacy'")
         expect(generationHook).toContain('async function workerLoop')
+        expect(generationHook).toContain("executionAuthority !== 'legacy' && !rotationActive")
     })
 
     it('moves raw prompts to compatibility UI and exposes typed override diff and character layout', async () => {

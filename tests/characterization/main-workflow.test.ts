@@ -613,6 +613,38 @@ beforeEach(() => {
 })
 
 describe('Main workflow golden characterization', () => {
+    it('captures an immutable durable enqueue plan without credential, transport, or output side effects', async () => {
+        stores.useAuthStore.setState({ token: '', isVerified: false, slot1Enabled: false })
+        stores.useGenerationStore.setState({
+            basePrompt: 'durable capture prompt',
+            negativePrompt: 'durable negative',
+            compositionMode: 'v2',
+            batchCount: 2,
+        })
+        const captured: import('@/stores/generation-store').CapturedMainGeneration[] = []
+
+        await stores.useGenerationStore.getState().generate({
+            capturePrepared: value => {
+                captured.push(structuredClone(value))
+            },
+        })
+
+        expect(captured).toHaveLength(2)
+        expect(captured.map(value => value.finalPrompt)).toEqual([
+            'durable capture prompt',
+            'durable capture prompt',
+        ])
+        expect(captured.every(value => value.params.prompt === value.finalPrompt)).toBe(true)
+        expect(runtimeCapture.requests).toEqual([])
+        expect(runtimeCapture.writes).toEqual([])
+        expect(stores.useGenerationStore.getState()).toMatchObject({
+            isGenerating: false,
+            generatingMode: null,
+            history: [],
+        })
+        expect(runtimeCapture.calls).not.toContain('payload:adapt-params')
+    })
+
     it('matches the production store, adapter, payload, output and metadata fixture', async () => {
         const scenarios: Array<Record<string, unknown>> = []
 

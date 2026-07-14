@@ -80,6 +80,29 @@ export interface MainCompositionShadowDifference {
         | 'strict-broken-reference'
 }
 
+export interface CapturedMainGeneration {
+    params: GenerationParams
+    finalPrompt: string
+    imageFormat: 'png' | 'webp'
+    metadataMode: GenerationParams['metadataMode']
+    streaming: boolean
+    sequenceCommitProposal: DeepReadonly<FragmentSequenceCommitProposal> | null
+    output: {
+        autoSave: boolean
+        directory: string
+        useAbsolutePath: boolean
+        capabilityFallbackDirectory: string
+        portableDirectory?: GenerationParams['portableOutputDirectory']
+        fileName?: string
+        collisionPolicy: 'unique' | 'overwrite' | 'error'
+    }
+}
+
+interface GenerateOptions {
+    /** Internal enqueue planner seam. No transport or output is performed. */
+    capturePrepared?: (capture: CapturedMainGeneration) => void | Promise<void>
+}
+
 export interface MainCompositionShadowDiff {
     matches: boolean
     v2Valid: boolean
@@ -740,7 +763,7 @@ interface GenerationState {
         selectedResolution: Resolution
     }) => void
 
-    generate: () => Promise<void>
+    generate: (options?: GenerateOptions) => Promise<void>
     cancelGeneration: () => void
     addToHistory: (item: HistoryItem) => void
     clearHistory: () => void
@@ -904,7 +927,7 @@ export const useGenerationStore = create<GenerationState>()(
                 })
             },
 
-            generate: async () => {
+            generate: async (options = {}) => {
                 const {
                     basePrompt, additionalPrompt, detailPrompt, negativePrompt, inpaintingPrompt,
                     model, steps, cfgScale, cfgRescale, sampler, scheduler, smea, smeaDyn, variety,
@@ -917,7 +940,7 @@ export const useGenerationStore = create<GenerationState>()(
                 const slot1Token = useAuthStore.getState().getActiveTokens().find((entry) => entry.slot === 1)
                 const token = slot1Token?.token
 
-                if (!token) {
+                if (!token && options.capturePrepared === undefined) {
                     useAuthStore.getState().requestCredentialUnlock()
                     toast({
                         title: i18n.t('toast.tokenRequired.title'),
@@ -1363,7 +1386,54 @@ export const useGenerationStore = create<GenerationState>()(
                         const hasSourceEdit = Boolean(generationParams.sourceImage || generationParams.mask)
                         const canUseStreaming = settings.useStreaming && !hasSourceEdit
 
+                        const generationSequenceProposal = compositionMode === 'v2'
+                            ? sequenceProposal
+                            : legacyFragmentSession!.sequenceCommitProposal
+                        const {
+                            savePath,
+                            autoSave: liveAutoSave,
+                            useAbsolutePath,
+                        } = useSettingsStore.getState()
+                        const autoSave = v2Output?.autoSave ?? liveAutoSave
+                        const requestedAbsolutePath = v2Output?.useAbsolutePath ?? useAbsolutePath
+
+                        if (options.capturePrepared !== undefined) {
+                            const fileExt = imageFormat === 'webp' ? 'webp' : 'png'
+                            const moduleFileName = ensureImageFileExtension(
+                                v2Output?.fileName ?? modulePlan?.output.fileName,
+                                fileExt,
+                            )
+                            await options.capturePrepared({
+                                params: generationParams,
+                                finalPrompt,
+                                imageFormat,
+                                metadataMode: effectiveMetadataMode,
+                                streaming: canUseStreaming,
+                                sequenceCommitProposal: generationSequenceProposal,
+                                output: {
+                                    autoSave,
+                                    directory: v2Output?.directory
+                                        || modulePlan?.output.directory
+                                        || savePath
+                                        || 'NAIS_Output',
+                                    useAbsolutePath: requestedAbsolutePath,
+                                    capabilityFallbackDirectory: v2Output?.capabilityFallbackDirectory
+                                        || savePath
+                                        || 'NAIS_Output',
+                                    ...(v2Output?.portableDirectory === undefined
+                                        ? {}
+                                        : { portableDirectory: v2Output.portableDirectory }),
+                                    ...(moduleFileName === null ? {} : { fileName: moduleFileName }),
+                                    collisionPolicy: resolvedPlan?.outputPolicy.collisionPolicy ?? 'unique',
+                                },
+                            })
+                            completedBatchCount += 1
+                            continue
+                        }
+
                         if (get().isCancelled || get().generationSessionId !== sessionId) break
+
+                        if (!token) throw new Error('Execution credential is unavailable')
 
                         let result
                         const streamMimeType = imageFormat === 'webp' ? 'image/webp' : 'image/png'
@@ -1401,18 +1471,7 @@ export const useGenerationStore = create<GenerationState>()(
                             const mimeType = imageFormat === 'webp' ? 'image/webp' : 'image/png'
                             const imageUrl = `data:${mimeType};base64,${result.imageData}`
 
-                            const generationSequenceProposal = compositionMode === 'v2'
-                                ? sequenceProposal
-                                : legacyFragmentSession!.sequenceCommitProposal
-
                             // Publish filesystem outputs through the transactional writer.
-                            const {
-                                savePath,
-                                autoSave: liveAutoSave,
-                                useAbsolutePath,
-                            } = useSettingsStore.getState()
-                            const autoSave = v2Output?.autoSave ?? liveAutoSave
-                            const requestedAbsolutePath = v2Output?.useAbsolutePath ?? useAbsolutePath
                             const canCommitOutput = (): boolean => (
                                 !get().isCancelled && get().generationSessionId === sessionId
                             )

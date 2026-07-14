@@ -1572,3 +1572,139 @@ line은 기존 passing contract의 expected diagnostic이다.
   payload/OutputWriter/Scene contracts
 - Next phase readiness: READY — pure durable queue acceptance is complete; workflow cutover requires a separately
   scoped phase with characterization/shadow enqueue and must not be inferred from this commit.
+
+## Phase 08 — QUEUE WORKFLOW CUTOVER
+
+기준 시각: 2026-07-14 (Asia/Seoul)
+
+### Baseline and characterization-first evidence
+
+- Base HEAD: `6b45a81ed37f9eed1972ca4d2579e46cfa04e7ba`
+- Branch: `agent/public-release-sync-20260714`
+- Phase 시작 working tree에는 unrelated user change `M AGENTS.md`와 generated untracked
+  `src-tauri/src-tauri/**`가 있었다. 둘 다 읽기 외 변경·삭제·stage하지 않았다.
+- 구현 전 `npm run test:queue`는 exit 0, 4 files/20 tests였고 기존 domain/repository behavior를 고정했다.
+  Main/Scene/OutputWriter characterization도 exit 0, 3 files/47 tests로 current transport/save/session/
+  cancel/output ordering을 고정했다. 새 failure/virtualization/recovery acceptance는 production assertion을
+  완화하거나 skip하지 않고 Phase 08 source와 함께 추가했다.
+- `src/services/nai/payload.ts`, CompositionEngine/repository/migration, portable capability, old backup/v1
+  Asset Profile/legacy metadata reader와 migration fixture는 교체·삭제하지 않았다. Electron,
+  better-sqlite3, Sharp, Marketplace/Supabase/catalog/OAuth dependency/runtime도 추가하지 않았다.
+
+### Durable enqueue, execution and recovery
+
+1. Main의 `generate({ capturePrepared: true })`와 Scene adapter가 current Composition plan, wildcard/seed,
+   parameters와 output policy를 transport 전에 capture한다. Required resource를 content-addressed managed
+   AppData에 materialize한 뒤 batch/jobs/resources를 한 IndexedDB transaction으로 등록한다.
+2. Operation ID는 DB commit acknowledgement 전까지 persisted pending identity로 재사용하고 성공 확인
+   뒤에만 회전한다. Repository unique idempotency key가 concurrent double-click과 uncertain restart replay를
+   중복 batch/artifact 없이 수렴시킨다.
+3. Queue coordinator는 Main 1 slot, active NovelAI token별 Scene 2 slots와 streaming T2I 1-slot 제한을
+   유지하며 workflow 간 slot을 직렬화한다. Lease/attempt/heartbeat, generationSessionId/cancel AbortSignal,
+   current transport/save, fragment sequence CAS와 token balance/release를 executor adapter에서 실행한다.
+4. 401/auth와 typed local I/O/ENOSPC는 batch를 pause한다. 429/timeout/transient failure는 bounded ready-at
+   backoff로 requeue하고 decode item failure는 다음 job을 계속한다. Continue/pause-on-fatal/
+   stop-on-first-error policy, item cancel/skip와 retry-failed-only lineage가 repository state를 소유한다.
+5. OutputWriter transaction과 artifact는 terminal job commit 전에 prebind된다. `sourceJobId`는 metadata와
+   diagnostic sidecar에 전달되고 path 존재만으로 success를 판단하지 않는다. files-committed journal은
+   startup에서 generic orphan보다 먼저 queue-linked recovery되고 성공 job 재실행은 output을 만들지 않는다.
+6. Startup gate는 queue-linked output recovery → generic OutputWriter orphan recovery → prior-process lease
+   recovery → runtime start 순서다. Active request cancel signal을 DB round trip보다 먼저 abort하고 terminal
+   commit에 session/lease를 재검사하므로 cancel 뒤 late response가 저장되지 않는다.
+
+### Queue Center and compatibility release
+
+- `/queue` Queue Center는 fixed-range list virtualization, batch summary, queued/running/succeeded/failed/
+  cancelled/skipped/blocked projection, pause/resume, item/batch cancel, retry failed, skip, failure policy,
+  item/total progress, recent throughput, bounded ETA와 redacted diagnostic drawer를 제공한다.
+- Keyboard Home/End/Arrow navigation, visible focus와 44px mobile touch target/safe-area를 contract로 고정했다.
+  10,000 lightweight projections에서 rendered row를 bounded하게 유지한다.
+- Main page, shared PromptPanel과 shortcuts는 durable generation command를 사용한다. Scene page도 durable
+  batch를 enqueue하되 legacy rollback flag에서는 retained `useSceneGeneration` worker를 사용한다.
+- 기존 Scene `queueCount`는 UI confirmation 뒤 현재 parameters를 snapshot하여 durable jobs로 변환할 수
+  있지만 자동 삭제/decrement하지 않는다. Queue execution authority default는 `durable`이고 `legacy`는
+  compatibility release의 explicit rollback이다. Rotation은 기존 worker/session 계약을 계속 사용한다.
+- Asset Studio의 기존 virtual list 계산을 shared fixed-range utility로 옮겨 Queue Center와 재사용했다.
+  새 runtime 또는 test dependency는 추가하지 않았다.
+
+### Final verification
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| initial `npm run test:queue` before implementation | 0 | 4 files, 20/20 | Phase 07 repository baseline PASS |
+| initial Main/Scene/OutputWriter characterization | 0 | 3 files, 47/47 | executor boundary baseline PASS |
+| `npm ci` | 0 | added 393; audited 394 | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; platform optional만 unmet |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,382 modules | tsc + Vite PASS |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | unexplained payload diff 0 |
+| `npm run test:composition` | 0 | 98 passed/1 skipped files; 732 passed/3 skipped tests | aggregate PASS; live opt-in only skipped |
+| `npm run test:migration` | 0 | 15 files, 135/135 | legacy/migration fixtures PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 27/27 | redaction/diagnostic PASS |
+| `npm run test:persistence` | 0 | 3 files, 15/15 + Chromium rescue | PASS |
+| `npm run test:credential-vault` | 0 | 5 files, 20/20 | PASS |
+| `npm run test:queue` | 0 | 9 files, 42/42 | cutover/recovery/concurrency/UI store PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | PASS |
+| `npm run test:characterization` | 0 | 6 files, 47/47 | legacy/current workflow behavior PASS |
+| `npm run test:nai-core` | 0 | 50/50 | payload/source-edit contract PASS |
+| `npm run test:nai-transport` | 0 | 3 files, 14/14 | browser/desktop/Android typed cancel/timeout PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | expected BRIA fallback 포함 PASS |
+| `npm run test:responsive-layout` | 0 | route/viewport matrix + 5 Queue Center sizes | PASS |
+| `npm run test:android-port` | 0 | source/generated manifest contract | PASS |
+| `npm run test:android-release-contract` | 0 | release contract | PASS |
+| `npm run test:remote-runtime-removal` | 0 | forbidden runtime/tracked tooling gate | PASS |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+| Rust `nai_transport::tests` | 0 | 5/5 | loopback cancel/timeout PASS |
+| `git diff --check` | 0 | tracked Phase diff | PASS |
+
+`test:queue`의 behavior matrix는 atomic enqueue/resource reuse, pause/restart/resume, immediate old lease
+recovery, dual-slot max concurrency, streaming single slot, retry failed only, 401 pause, 429 backoff, decode
+continue, missing resource blocked, wrapped ENOSPC pause, cancel no-late-output, output recovery linkage,
+idempotent operation ID와 legacy rollback을 포함한다. Responsive authoritative rerun은 `/queue`를
+390×844, 412×915, 768×1024, 1280×800, 1536×960에서 검사했다. Test skip, assertion loosen,
+catch-and-ignore 또는 failure 숨김은 추가하지 않았다.
+
+### Known residual constraints
+
+- Multi-job sequential wildcard snapshot은 앞 job commit 전에 같은 sequence proposal base를 가질 수 있다.
+  Fragment CAS는 stale publication과 duplicate artifact를 차단하지만 job 간 durable dependency projection은
+  없으므로 conflict item이 retry/fail될 수 있다(R-031).
+- Managed resource는 content-deduplicated지만 reference-aware GC가 없고, Queue Center는 DOM을 virtualize해도
+  selected batch lightweight projection을 polling한다(R-032, R-034).
+- Startup lease invalidation은 single desktop app process를 가정한다. Multi-process execution fencing,
+  real-browser quota/eviction/background throttle과 장시간 10,000+ profiling은 별도 evidence가 없다(R-033).
+- Live credential을 사용한 NovelAI kill/restart recovery, actual disk-full와 Android APK/emulator/physical
+  output은 opt-in 환경이 아니어서 실행하지 않았다. Synthetic/fault-injected code gates는 모두 통과했다.
+
+### HANDOFF REPORT
+
+- Phase: 08 — QUEUE WORKFLOW CUTOVER
+- Base HEAD: `6b45a81ed37f9eed1972ca4d2579e46cfa04e7ba`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: durable queue domain/repository/coordinator/startup/recovery/resource materializer and Main/Scene
+  adapters; queue UI store/runtime hook/Queue Center/route/shortcuts/layout/i18n; Main/Scene command callers;
+  OutputWriter/metadata/scene save linkage; shared virtualization/responsive gate; queue/output/UI/metadata/
+  characterization tests; composition-v2 architecture/status/decision/risk/limitation/verification/rollback/ledger
+- Behavior added/changed: Main/Scene durable immutable enqueue; managed resumable resources; lease/attempt executor;
+  restart recovery and idempotent output transaction; 10,000-job Queue Center; explicit non-destructive legacy
+  conversion/rollback
+- Preserved contracts: CompositionEngine and composition repository/migration; portable capability; payload source/
+  fixtures; current dual-token/streaming/source-edit/session/cancel/stale/retry/requeue/rotation/image release;
+  OutputWriter boundary; old backup/v1 Asset Profile/legacy metadata/migration fixtures; all existing user data
+- Tests and exit codes: final verification table above; every executable final gate exit 0
+- Artifact paths: ignored `dist/**`; ignored `src-tauri/target/**`; this tracked ledger. No token, prompt, signed URL,
+  image/base64 or response body artifact was created
+- Not tested and exact reason: live NovelAI/R2 was not used because this checkout had no explicit credential opt-in;
+  Android init/build/APK/emulator/physical install was not run because no isolated device/release environment was
+  authorized; actual disk-full, browser quota/eviction and multi-process fencing need controlled destructive or
+  multi-runtime environments. Static Android gates, typed JS/Rust transport tests and fault injection passed
+- Remaining risks: R-015, R-016, R-019, R-024, R-026, R-027, R-028, R-031, R-032, R-033, R-034; especially
+  sequential fragment dependency projection, managed resource retention and live restart/device release evidence
+- Rollback procedure: stop/cancel durable runtime, select Queue Center `legacy` execution authority, restart and verify
+  retained direct Main/Scene behavior; preserve queue DB, managed AppData, journals, legacy queueCount, user output,
+  unrelated `AGENTS.md` and generated `src-tauri/src-tauri/**`; revert only this Phase 08 local commit. Never
+  reset/clean/delete DB/resources/user data or alter payload/Composition/OutputWriter/Scene contracts
+- Next phase readiness: READY — durable queue recovery, failed-only retry, duplicate-output prevention and both stop
+  gates are covered by deterministic behavior tests; opt-in live/release evidence remains an external gate, not a
+  Phase 08 code regression.

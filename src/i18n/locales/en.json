@@ -317,7 +317,21 @@
         "library": "Library",
         "settings": "Settings",
         "styleLab": "Style Lab",
-        "promptEditor": "Prompt Editor"
+        "promptEditor": "Prompt Editor",
+        "queue": "Queue Center"
+    },
+    "queue": {
+        "title": "Queue Center",
+        "enqueued": "Added to durable queue",
+    "enqueuedCount": "{{count}} jobs are ready in Queue Center.",
+    "enqueueFailed": "Queue enqueue failed",
+    "legacyPending": "{{count}} legacy Scene items are pending.",
+    "legacyRetained": "Conversion snapshots current parameters and keeps the legacy counts for rollback.",
+    "convertLegacy": "Convert to durable jobs",
+    "convertLegacyTitle": "Convert legacy Scene queue?",
+    "convertLegacyDescription": "Current parameters and required resources will be snapshotted into durable jobs. Existing queue counts will remain available for rollback.",
+    "convertLegacyConfirm": "Convert",
+    "failureSummary": "{{count}} failed or blocked · Open diagnostics"
     },
     "assetModuleStudioV2": {
         "wrapper": {

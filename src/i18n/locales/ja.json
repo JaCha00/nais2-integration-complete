@@ -316,7 +316,21 @@
         "library": "ライブラリ",
         "settings": "設定",
         "styleLab": "画風研究所",
-        "promptEditor": "プロンプトエディター"
+        "promptEditor": "プロンプトエディター",
+        "queue": "キューセンター"
+    },
+    "queue": {
+        "title": "キューセンター",
+        "enqueued": "永続キューに追加しました",
+    "enqueuedCount": "{{count}}件のジョブをキューセンターに追加しました。",
+    "enqueueFailed": "キューへの追加に失敗しました",
+    "legacyPending": "従来のScene待機項目が{{count}}件あります。",
+    "legacyRetained": "変換時に現在のパラメーターをスナップショットし、ロールバック用に従来の件数を保持します。",
+    "convertLegacy": "永続ジョブに変換",
+    "convertLegacyTitle": "従来のSceneキューを変換しますか？",
+    "convertLegacyDescription": "現在のパラメーターと必要なリソースを永続ジョブとしてスナップショットします。ロールバック用に従来のqueueCountは保持されます。",
+    "convertLegacyConfirm": "変換",
+    "failureSummary": "失敗またはブロック {{count}}件 · 診断を開く"
     },
     "assetModuleStudioV2": {
         "wrapper": {

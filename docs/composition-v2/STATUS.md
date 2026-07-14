@@ -4,7 +4,7 @@
 
 ## 결론
 
-Composition Domain v2의 core, workflow adapter, repository/migration, authoring UI, OutputWriter, portable resource/capability adapter와 responsive Android 계약은 구현되어 있다. 독립 durable generation queue domain과 normalized IndexedDB repository도 추가됐지만 기존 Main/Scene workflow는 아직 이를 사용하지 않는다. Phase 06은 production-like startup matrix, 항상 접근 가능한 Composition Authority diagnostics panel, repository/hash 검증과 한 동작 legacy rollback을 추가했다. 그러나 **fresh production startup은 아직 v2 authority를 기본 활성화하지 않는다.** Main/Scene/Style Lab의 persisted mode 기본값은 `v2`지만 process authority가 `legacy`이면 effective mode가 legacy로 강제된다. Vitest setup과 explicit fixture activation은 v2를 올릴 수 있으므로 local test 통과만으로 production cutover를 선언할 수 없다.
+Composition Domain v2의 core, workflow adapter, repository/migration, authoring UI, OutputWriter, portable resource/capability adapter와 responsive Android 계약은 구현되어 있다. Phase 08부터 Main과 Scene의 새 generation 명령은 durable queue에 immutable snapshot과 managed resource를 transaction으로 등록하며, queue repository가 claim/snapshot/status authority다. 기존 transport, save, dual-token/session/cancel 경계는 executor adapter로 재사용한다. 한 release 동안 Scene `queueCount` compatibility와 명시적 legacy execution rollback을 유지한다. Phase 06은 production-like startup matrix, 항상 접근 가능한 Composition Authority diagnostics panel, repository/hash 검증과 한 동작 legacy rollback을 추가했다. 그러나 **fresh production startup은 아직 Composition v2 authority를 기본 활성화하지 않는다.** Composition authority와 queue execution authority는 서로 다른 gate다. Main/Scene/Style Lab의 persisted composition mode 기본값은 `v2`지만 process authority가 `legacy`이면 effective mode가 legacy로 강제된다. Vitest setup과 explicit fixture activation은 v2를 올릴 수 있으므로 local test 통과만으로 composition production cutover를 선언할 수 없다.
 
 따라서 이번 최종 정리에서는 caller search로 definition-only임이 확인된 작은 public alias만 제거했다. legacy request builder, shadow 비교, migration projection, authority feature flag와 recovery importer/parser는 삭제하지 않았다.
 
@@ -24,9 +24,9 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 ## 최종 아키텍처
 
 - `src/domain/composition/**`: React/Zustand/Tauri/IndexedDB/Node/filesystem과 분리된 schema, commands, resolver, engine, repository와 migration model.
-- workflow adapter: Main, Scene, Style Lab이 engine plan을 각 workflow request와 state transition으로 materialize한다. Scene queue worker 구조는 변경하지 않았다.
+- workflow adapter: Main, Scene, Style Lab이 engine plan을 각 workflow request와 state transition으로 materialize한다. Main/Scene queue executor는 기존 transport/save/session API를 감싸고 Scene legacy worker는 rollback/rotation compatibility로 유지한다.
 - repository authority: CAS revision, stale conflict, migration lock/journal, shadow comparison과 fail-closed runtime authority. Critical IndexedDB store는 immediate commit/readback하며 DB unavailable startup은 normal App을 mount하지 않는 rescue mode로 격리된다.
-- durable queue: `batches`, `jobs`, `attempts`, `leases`, `resources` object store를 가진 별도 IndexedDB database가 immutable enqueue snapshot, CAS lease, terminal-state 불변, expiry recovery와 deterministic pagination을 소유한다. Main/Scene worker와 generation Zustand state는 변경하지 않았다.
+- durable queue: `batches`, `jobs`, `attempts`, `leases`, `resources` object store를 가진 별도 IndexedDB database가 immutable enqueue snapshot, CAS lease, attempt/progress, terminal-state 불변, output transaction linkage, retry lineage와 restart recovery를 소유한다. Managed AppData resource materialization과 Queue Center가 이 repository를 사용하며 Main/Scene의 새 enqueue write authority다.
 - authoring: `AssetModuleStudio`와 shared composition workspace가 typed draft/validate/commit/undo/conflict/repair 흐름을 repository command로 수행한다.
 - output: 공통 OutputWriter가 destination, temp stage, image/metadata/thumbnail, session recheck, atomic commit, state callback, rollback과 recovery journal을 소유한다.
 - platform: portable path/resource reference와 RuntimeCapabilities adapter가 desktop/Android materialization 차이를 격리한다.
@@ -51,6 +51,9 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
   lifecycle, History source-edit readiness wait와 Android privileged-permission crash classification.
 - Phase 07 durable queue domain: workflow-independent snapshot/state/retry model, normalized IndexedDB
   repository, competing lease/restart recovery/schema-upgrade/10,000-job deterministic tests. Runtime cutover 없음.
+- Phase 08 queue workflow cutover: Main/Scene immutable enqueue, managed resource materialization, current
+  dual-token/stream/session/cancel transport executor, OutputWriter recovery linkage, explicit legacy rollback과
+  10,000-job virtualized Queue Center.
 
 Production authority cutover와 legacy builder retirement는 별도 release gate로 남는다.
 
@@ -148,6 +151,13 @@ Durable queue Phase 07은 pure domain/repository만 추가했다. 10,000-job pag
 expiry/restart recovery, duplicate idempotency, missing resource, v1→v2 schema upgrade와 aborted upgrade가
 결정적으로 통과한다. Enqueue caller, worker execution, managed AppData resource-copy producer와 UI는
 의도적으로 연결하지 않았으므로 기존 generation behavior와 production authority는 바뀌지 않는다.
+
+Phase 08은 위 Phase 07 경계를 Main/Scene generation에 연결했다. 새 enqueue는 durable job만 authority로
+쓰며 startup은 linked OutputWriter journal을 먼저 복구하고 이전 process lease를 회수한 뒤 executor를
+시작한다. Queue Center는 10,000개 projection에서 bounded DOM을 유지하고 batch/item control, retry-failed,
+failure policy, throughput/ETA와 redacted diagnostic link를 제공한다. 기존 Scene `queueCount`는 자동 삭제하지
+않고 확인 후 현재 parameter snapshot으로만 변환하며, `nais2-queue-ui.executionAuthority=legacy` rollback
+선택 시 retained legacy executor를 사용한다. Composition authority의 fresh legacy 기본값은 바뀌지 않았다.
 
 같은 phase의 isolated production binary probe는 generated capability에 `$APPDATA/**`가 있음을 확인했고,
 `BaseDirectory.AppData` resolved directory와 Stronghold snapshot parent가 동일하며 absolute/relative

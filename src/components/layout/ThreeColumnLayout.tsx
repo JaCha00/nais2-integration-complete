@@ -33,6 +33,7 @@ import {
     PanelLeft,
     PanelRight,
     Package,
+    ListTodo,
 } from 'lucide-react'
 
 interface ThreeColumnLayoutProps {
@@ -155,6 +156,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
         { path: '/prompts', icon: NotebookPen, labelKey: 'nav.promptEditor' },
         { path: '/asset-modules', icon: Package, labelKey: 'nav.assetModuleStudio', fallbackLabel: 'Asset Studio' },
         { path: '/style-lab', icon: FlaskConical, labelKey: 'nav.styleLab' },
+        { path: '/queue', icon: ListTodo, labelKey: 'nav.queue', fallbackLabel: 'Queue Center' },
         { path: '/web', icon: Globe, labelKey: 'nav.web' },
         { path: '/library', icon: Images, labelKey: 'nav.library' },
         { path: '/settings', icon: Settings, labelKey: 'nav.settings' },

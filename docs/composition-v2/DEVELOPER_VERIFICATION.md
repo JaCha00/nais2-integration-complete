@@ -32,7 +32,7 @@ cargo check --manifest-path src-tauri/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml nai_transport::tests --lib
 ```
 
-`test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다. `test:persistence`는 Vitest fault suite 뒤에 실제 Chromium startup에서 blocked IndexedDB rescue keyboard/touch gate를 실행한다. `test:credential-vault`는 AuthState v2→v3 two-phase migration, interruption/resume, wrong passphrase/unavailable/delete, legacy backup scan과 native source/capability 계약을 실행한다. `test:queue`는 모든 state transition, immutable snapshot/hash, competing CAS lease, expiry/restart recovery, duplicate idempotency, missing resource, 10,000-job indexed pagination, schema upgrade와 transaction abort를 실행한다. `test:secret-redaction`은 export/snapshot/restore projection에서 AuthState v3 reference만 남고 raw secret/runtime cache가 제거되는지 별도로 검증한다. `test:nai-transport`는 browser/desktop fetch adapter와 Android channel adapter의 standard/stream, cancel-before-request, cancel-after-headers, body timeout과 429 보존을 실행한다. Rust category는 loopback mock server로 headers/body, socket cancellation과 total timeout을 검증하며 live token을 사용하지 않는다.
+`test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다. `test:persistence`는 Vitest fault suite 뒤에 실제 Chromium startup에서 blocked IndexedDB rescue keyboard/touch gate를 실행한다. `test:credential-vault`는 AuthState v2→v3 two-phase migration, interruption/resume, wrong passphrase/unavailable/delete, legacy backup scan과 native source/capability 계약을 실행한다. `test:queue`는 state transition/snapshot/hash/schema upgrade 외에 atomic batch/resource enqueue, 10,000-job pagination, lease/startup recovery, dual-token/streaming concurrency, pause/restart/resume, 401/429/decode/ENOSPC/cancel, retry-failed, managed resource digest, OutputWriter linkage와 legacy rollback을 실행한다. `test:secret-redaction`은 export/snapshot/restore projection에서 AuthState v3 reference만 남고 raw secret/runtime cache가 제거되는지 별도로 검증한다. `test:nai-transport`는 browser/desktop fetch adapter와 Android channel adapter의 standard/stream, cancel-before-request, cancel-after-headers, body timeout과 429 보존을 실행한다. Rust category는 loopback mock server로 headers/body, socket cancellation과 total timeout을 검증하며 live token을 사용하지 않는다.
 
 Vault restart regression의 focused gate는 `npm run test:credential-vault`와
 `npm run test:persistence`다. Native setup은 `app_data_dir`와 `app_local_data_dir`를 Stronghold plugin
@@ -45,6 +45,28 @@ Vault ACL regression을 확인할 때는 별도 application identifier의 isolat
 Generated capability의 `$APPDATA/**` 존재, `BaseDirectory.AppData` resolved directory와 snapshot parent
 동일 여부, absolute/relative `exists` 허용 여부만 boolean으로 기록한다. 실제 resolved path, snapshot
 내용, passphrase와 credential은 terminal/artifact에 남기지 않는다.
+
+## Phase 08 durable queue focused verification
+
+Queue cutover 변경은 가장 작은 category와 workflow/output characterization을 먼저 실행한다.
+
+```text
+npm run test:queue
+npx --no-install vitest run tests/characterization/main-workflow.test.ts tests/characterization/scene-workflow.test.ts tests/services/output/output-writer.test.ts tests/helpers/metadata-v2.test.ts tests/components/queue-center.contract.test.ts
+npm run lint
+npm run build
+```
+
+Repository/coordinator suite는 10,000 jobs, 두 active token의 최대 동시성, streaming T2I single slot,
+pause→restart→resume, retry failed only, 401 batch pause, 429 ready-at backoff, decode failure continuation,
+wrapped disk-full pause, cancel 뒤 late output 없음, files-committed recovery와 legacy authority를 포함해야 한다.
+Resource tests는 AppData reference의 digest/readback과 DB snapshot에서 raw/base64 byte가 제거되는지 확인한다.
+Queue Center contract는 390×844, 412×915, 768×1024, 1280×800, 1536×960에서 `/queue` route를 포함한다.
+
+실제 restart 검증은 종료 전에 job/output transaction ID만 redacted evidence로 기록하고 prompt, token,
+signed URL, image byte/base64를 남기지 않는다. Live NovelAI request, actual disk-full, APK/emulator test는
+명시적 credential/device/release 환경에서만 추가한다. Android request가 finite success 또는 typed
+timeout/cancel로 끝나지 않거나 cancel 뒤 output/history/job success가 생기면 즉시 stop gate다.
 
 ## Phase 06 authority preflight
 

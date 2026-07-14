@@ -72,10 +72,31 @@ Durable queue phase는 기존 Main/Scene workflow를 cutover하거나 user gener
 보존하고 해당 local commit 하나만 `git revert`한다. `reset --hard`, `clean`과 queue database 삭제는
 rollback 절차가 아니다.
 
-현재 runtime caller가 없으므로 source revert만으로 기존 generation behavior로 돌아간다. Future
-cutover 뒤 rollback할 때도 먼저 enqueue/worker authority를 이전 adapter로 되돌리고 committed queue
-records와 managed resource를 보존해야 한다. OutputWriter, Scene worker/session/cancel/requeue 계약이나
-composition/payload repository를 queue rollback 과정에서 별도로 변경하지 않는다.
+Phase 07 commit 단독 시점에는 runtime caller가 없었으므로 source revert만으로 기존 generation
+behavior로 돌아갔다. Phase 08 cutover 뒤에는 아래 operational rollback으로 enqueue/worker authority를
+legacy adapter로 먼저 되돌리고 committed queue records와 managed resource를 보존한다. OutputWriter,
+Scene worker/session/cancel/requeue 계약이나 composition/payload repository를 queue rollback 과정에서
+별도로 변경하지 않는다.
+
+## Queue workflow cutover rollback
+
+Phase 08 operational rollback은 먼저 Queue Center에서 execution authority를 `legacy`로 명시적으로
+선택한다. 이 setting은 persisted `nais2-queue-ui` projection의 `executionAuthority`만 바꾸며 durable
+batch/job/attempt/lease/resource, linked OutputWriter journal, managed AppData resource, legacy Scene
+`queueCount`와 user output을 삭제하지 않는다. 이미 running인 durable executor는 정상 cancel/shutdown
+guard로 멈춘 뒤 legacy generation을 시작하고, DB를 직접 편집해 terminal state를 만들지 않는다.
+
+기존 `queueCount`를 durable jobs로 변환하는 UI는 현재 parameter snapshot을 새 batch로 등록하지만 count를
+자동 삭제하거나 decrement하지 않는다. 따라서 rollback을 위해 count를 복원하거나 durable job을
+duplicate enqueue하지 않는다. 성공 job 재실행, output path 존재만으로 success 표시, files-committed
+journal 삭제는 rollback 절차가 아니다.
+
+Source rollback은 unrelated `AGENTS.md`, `src-tauri/src-tauri/**`, generated cache와 모든 app/user/output
+data를 보존하고 Phase 08 local commit 하나만 `git revert`한다. `reset --hard`, `clean`, IndexedDB/AppData
+삭제와 destructive migration은 금지한다. Revert 전에 execution authority가 legacy인지 확인하고 running
+durable work를 cancel/shutdown한 뒤 restart한다. Revert 뒤 Main direct generation, Scene legacy queueCount,
+dual-token/stream/session/cancel/stale/retry/requeue/rotation/image-release와 Android typed timeout/cancel을
+focused characterization으로 다시 확인한다. Phase 07 durable records는 future forward recovery를 위해 남긴다.
 
 ## Authority rollback
 

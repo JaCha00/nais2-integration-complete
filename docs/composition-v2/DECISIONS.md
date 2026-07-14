@@ -356,3 +356,47 @@ Stronghold load에는 official API가 요구하는 absolute snapshot path를 계
 filesystem check는 `exists(SNAPSHOT_FILE, { baseDir: BaseDirectory.AppData })`로 수행한다. 이는 ACL과
 동일한 표현을 사용해 directory bootstrap/파일 부재와 permission rejection을 구분하며 snapshot
 format, salt, passphrase, credential persistence를 바꾸지 않는다.
+
+## D-029 — durable queue가 Main/Scene claim·snapshot·status authority다
+
+상태: Accepted
+
+Phase 08부터 일반 Main/Scene generation command는 current Composition resolve/preview 결과를 capture한
+뒤 immutable batch/job snapshot을 durable repository에 등록한다. Zustand에는 selected batch와 operation
+projection만 저장하며 새 enqueue의 authoritative job count/state를 `queueCount`에 이중 기록하지 않는다.
+Process restart는 linked OutputWriter recovery, prior-process lease recovery, executor start 순서로 진행한다.
+
+Executor는 current NovelAI transport, Main/Scene save API, dual-token scheduler, streaming T2I single-worker,
+source-edit non-streaming, generationSessionId/cancel/stale guard, retry/requeue, token rotation과 image release를
+adapter로 재사용한다. Cross-workflow slot arbitration만 durable coordinator가 소유한다. CompositionEngine,
+composition repository/migration, payload builder와 portable capability를 queue 구현으로 대체하지 않는다.
+
+## D-030 — queue resource와 output 성공은 content/transaction identity로 연결한다
+
+상태: Accepted
+
+Restart 가능한 source/mask/character/vibe byte는 enqueue 전에 SHA-256 content address로 managed AppData에
+temp-write/rename하고 digest를 다시 검증한다. Queue record에는 reference/digest만 남기며 raw byte, base64,
+token, Authorization, signed URL과 prompt 전문을 diagnostic에 기록하지 않는다. 같은 content는 operation
+간 재사용하고 concurrent writer는 기존 verified winner를 받아들인다. 새 production dependency는 없다.
+
+Enqueue idempotency는 immutable operation identity와 repository unique key로 보장한다. UI는 pending
+operation ID를 DB commit acknowledgement 전까지 재사용하고 성공 확인 뒤에만 회전한다. OutputWriter는
+prebound `outputTransactionId`/`sourceJobId`를 사용하며 files-committed journal이 있으면 startup recovery가
+artifact와 job을 함께 조정한다. 성공 판정은 output path 존재가 아니라 journal/transaction/job terminal
+commit에 근거한다. Terminal durable success 뒤 journal cleanup만 실패한 경우 이미 committed artifact를
+rollback하지 않는다.
+
+## D-031 — Queue Center와 legacy 변환/rollback은 비파괴적 explicit control이다
+
+상태: Accepted
+
+Queue Center는 lightweight projection을 fixed-range virtualization하여 10,000 job에서도 DOM node 수를
+bounded하게 유지한다. Batch summary, item/batch cancel, pause/resume, retry-failed, skip, failure policy,
+fractional/total progress, recent throughput와 bounded ETA, redacted diagnostic drawer를 desktop keyboard와
+mobile 44px touch target으로 제공한다.
+
+기존 Scene `queueCount`는 사용자가 confirmation을 승인한 경우에만 현재 parameter snapshot으로 durable
+jobs로 변환한다. 변환은 legacy count를 삭제하거나 줄이지 않는다. Persisted queue UI authority의 기본은
+`durable`이고 `legacy`는 한 release 동안의 명시적 rollback flag다. Source rollback도 durable DB,
+managed resource, OutputWriter journal, legacy count와 user output을 삭제하지 않는다.

@@ -17,6 +17,7 @@ import {
     acquireSceneRequestController,
     type SceneRequestControllerLease,
 } from '@/lib/scene-generation/request-cancellation'
+import { useQueueStore } from '@/stores/queue-store'
 
 const activeSceneWorkerCounts = new Map<number, number>()
 const runningSceneSlots = new Set<ApiSlot>()
@@ -360,9 +361,13 @@ export function useSceneGeneration() {
     const isVerified2 = useAuthStore(state => state.isVerified2)
     const token = useAuthStore(state => state.token)
     const token2 = useAuthStore(state => state.token2)
+    const executionAuthority = useQueueStore(state => state.executionAuthority)
+    const rotationActive = useRotationStore(state => state.active)
 
     useEffect(() => {
-        if (!isGenerating) return
+        // Rotation retains the established session/worker executor during the
+        // compatibility release. Normal Scene launches use the durable queue.
+        if (!isGenerating || (executionAuthority !== 'legacy' && !rotationActive)) return
 
         const startWorkers = () => {
             if (!activePresetId) {
@@ -453,6 +458,8 @@ export function useSceneGeneration() {
         isVerified2,
         token,
         token2,
+        executionAuthority,
+        rotationActive,
     ])
 
     useEffect(() => {
