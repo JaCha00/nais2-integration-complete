@@ -10,6 +10,7 @@ import { useUpdateChecker } from '@/hooks/useUpdateChecker'
 import { useShortcuts } from '@/hooks/useShortcuts'
 import { useWindowResizePerformanceMode } from '@/hooks/useWindowResizePerformanceMode'
 import { useDurableQueueRuntime } from '@/hooks/useDurableQueueRuntime'
+import { useR2UploadRuntime } from '@/hooks/useR2UploadRuntime'
 import MainMode from '@/pages/MainMode'
 
 const SceneMode = lazy(() => import('@/pages/SceneMode'))
@@ -35,6 +36,7 @@ function AppContent() {
     // Scene generation hook at App level - persists across page navigation
     useSceneGeneration()
     useDurableQueueRuntime()
+    useR2UploadRuntime()
     useUpdateChecker()
     useShortcuts()
     useWindowResizePerformanceMode()

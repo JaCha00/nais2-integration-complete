@@ -400,3 +400,33 @@ mobile 44px touch target으로 제공한다.
 jobs로 변환한다. 변환은 legacy count를 삭제하거나 줄이지 않는다. Persisted queue UI authority의 기본은
 `durable`이고 `legacy`는 한 release 동안의 명시적 rollback flag다. Source rollback도 durable DB,
 managed resource, OutputWriter journal, legacy count와 user output을 삭제하지 않는다.
+
+## D-032 — native R2는 desktop Rust SDK, one-way OS vault와 별도 resumable repository를 사용한다
+
+상태: Accepted
+
+Native R2 transport는 official maintained `aws-sdk-s3=1.122.0`을 exact pin한다. 이 line은 crate의
+Rust 1.88 MSRV와 맞는 마지막 S3 SDK release이며 Apache-2.0이다. `default-features=false`에서
+Tokio, rustls, HTTP/1.x와 default HTTPS client만 켜고 SigV4 signing, streamed `ByteStream`, conditional
+request와 multipart lifecycle을 SDK가 소유한다. Latest SDK는 Rust 1.94.1을 요구해 현재 toolchain
+contract를 깨고, handwritten SigV4/lower-level signer는 canonicalization, retry, error parsing과
+multipart state를 다시 구현해야 하므로 선택하지 않았다. Compatible Smithy/AWS transitive versions는
+Cargo.lock에 고정한다.
+
+Credential은 desktop-only `keyring=4.1.4`(MIT OR Apache-2.0)에 access/secret pair를 저장한다. Renderer는
+one-way store, availability와 delete command만 호출하며 secret read command는 제공하지 않는다. Profile,
+job, manifest와 diagnostics에는 `credentialRef`만 둔다. AWS SDK와 keyring은 Windows/macOS/Linux target
+dependency이므로 Android/iOS native binary graph에는 들어가지 않는다. `sha2=0.10`(MIT OR Apache-2.0)은
+1 MiB file streaming hash를 위해 direct dependency로 선언한다. Official SDK는 desktop binary/compile graph를
+키우지만 renderer bundle에는 포함되지 않는다. Clean base binary가 없어 exact size delta는 release artifact
+관찰 gate로 남긴다.
+
+R2 queue는 generation queue schema를 확장하지 않고 같은 normalized IndexedDB/CAS/terminal-state 패턴을
+별도 `nais2-r2-upload-queue` database에 적용한다. Multipart upload ID와 completed part를 part 성공 직후
+commit해 restart가 missing part만 전송한다. Manifest v2 checksum이 완료 object 재업로드를 막는다.
+Conflict `fail`/`skip-same`/`suffix`는 preflight와 `If-None-Match: *`를 유지하고 `overwrite`만 명시적
+unconditional write다. Dry-run은 HEAD만 수행한다. Legacy Python/Wrangler mode와 manifest 의미는 유지하며
+native directory UI는 current-session을 전체 directory로 재해석하지 않고 explicit artifact set을 요구한다.
+
+Mobile은 profile read capability만 지원한다. Native foreground upload와 Phase 12 background worker는
+명시적 unsupported capability이며 silent Wrangler/native fallback을 하지 않는다.

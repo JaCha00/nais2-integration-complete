@@ -27,6 +27,9 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 - workflow adapter: Main, Scene, Style Lab이 engine plan을 각 workflow request와 state transition으로 materialize한다. Main/Scene queue executor는 기존 transport/save/session API를 감싸고 Scene legacy worker는 rollback/rotation compatibility로 유지한다.
 - repository authority: CAS revision, stale conflict, migration lock/journal, shadow comparison과 fail-closed runtime authority. Critical IndexedDB store는 immediate commit/readback하며 DB unavailable startup은 normal App을 mount하지 않는 rescue mode로 격리된다.
 - durable queue: `batches`, `jobs`, `attempts`, `leases`, `resources` object store를 가진 별도 IndexedDB database가 immutable enqueue snapshot, CAS lease, attempt/progress, terminal-state 불변, output transaction linkage, retry lineage와 restart recovery를 소유한다. Managed AppData resource materialization과 Queue Center가 이 repository를 사용하며 Main/Scene의 새 enqueue write authority다.
+- native R2: non-secret R2ProfileV2와 UploadJob/manifest v2를 별도 IndexedDB repository가 소유하고, Rust가
+  OS vault credential을 resolve해 official SDK로 file streaming, conditional PUT와 multipart를 실행한다.
+  Renderer에는 secret read command가 없고 Android/iOS는 profile read만 지원한다.
 - authoring: `AssetModuleStudio`와 shared composition workspace가 typed draft/validate/commit/undo/conflict/repair 흐름을 repository command로 수행한다.
 - output: 공통 OutputWriter가 destination, temp stage, image/metadata/thumbnail, session recheck, atomic commit, state callback, rollback과 recovery journal을 소유한다.
 - platform: portable path/resource reference와 RuntimeCapabilities adapter가 desktop/Android materialization 차이를 격리한다.
@@ -54,6 +57,9 @@ Composition Domain v2의 core, workflow adapter, repository/migration, authoring
 - Phase 08 queue workflow cutover: Main/Scene immutable enqueue, managed resource materialization, current
   dual-token/stream/session/cancel transport executor, OutputWriter recovery linkage, explicit legacy rollback과
   10,000-job virtualized Queue Center.
+- Phase 09 native R2 integration: desktop Rust official S3 SDK/SigV4 streaming, OS vault reference, guided setup,
+  read-only conflict preview, resumable multipart UploadJob/manifest v2와 foreground restart recovery. 기존
+  Python/Wrangler backend와 mobile explicit unsupported boundary는 유지.
 
 Production authority cutover와 legacy builder retirement는 별도 release gate로 남는다.
 

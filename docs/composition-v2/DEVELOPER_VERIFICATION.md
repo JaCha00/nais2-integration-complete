@@ -19,6 +19,7 @@ npm run test:diagnostics
 npm run test:persistence
 npm run test:credential-vault
 npm run test:queue
+npm run test:r2
 npm run test:secret-redaction
 npm run test:characterization
 npm run test:nai-core
@@ -30,6 +31,7 @@ npm run test:android-release-contract
 npm run test:remote-runtime-removal
 cargo check --manifest-path src-tauri/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml nai_transport::tests --lib
+cargo test --manifest-path src-tauri/Cargo.toml r2_native:: --lib
 ```
 
 `test:composition`은 현재 전체 Vitest suite를 실행하므로 category 명령과 중복될 수 있다. 중복은 실패 은폐가 아니라 category별 진단을 위한 의도된 matrix다. `test:persistence`는 Vitest fault suite 뒤에 실제 Chromium startup에서 blocked IndexedDB rescue keyboard/touch gate를 실행한다. `test:credential-vault`는 AuthState v2→v3 two-phase migration, interruption/resume, wrong passphrase/unavailable/delete, legacy backup scan과 native source/capability 계약을 실행한다. `test:queue`는 state transition/snapshot/hash/schema upgrade 외에 atomic batch/resource enqueue, 10,000-job pagination, lease/startup recovery, dual-token/streaming concurrency, pause/restart/resume, 401/429/decode/ENOSPC/cancel, retry-failed, managed resource digest, OutputWriter linkage와 legacy rollback을 실행한다. `test:secret-redaction`은 export/snapshot/restore projection에서 AuthState v3 reference만 남고 raw secret/runtime cache가 제거되는지 별도로 검증한다. `test:nai-transport`는 browser/desktop fetch adapter와 Android channel adapter의 standard/stream, cancel-before-request, cancel-after-headers, body timeout과 429 보존을 실행한다. Rust category는 loopback mock server로 headers/body, socket cancellation과 total timeout을 검증하며 live token을 사용하지 않는다.
@@ -45,6 +47,30 @@ Vault ACL regression을 확인할 때는 별도 application identifier의 isolat
 Generated capability의 `$APPDATA/**` 존재, `BaseDirectory.AppData` resolved directory와 snapshot parent
 동일 여부, absolute/relative `exists` 허용 여부만 boolean으로 기록한다. 실제 resolved path, snapshot
 내용, passphrase와 credential은 terminal/artifact에 남기지 않는다.
+
+## Phase 09 native R2 focused verification
+
+```text
+npm run test:r2
+npm run test:diagnostics
+npm run test:secret-redaction
+cargo test --manifest-path src-tauri/Cargo.toml r2_native:: --lib
+cargo check --manifest-path src-tauri/Cargo.toml
+npm run lint
+npm run build
+```
+
+R2 category는 legacy Wrangler의 current-session/delta/full-sync/dry-run request parity, non-secret Asset
+Profile projection, R2ProfileV2 validation, mobile explicit capability, manifest v2 dedupe, conditional conflict
+preview, interrupted multipart restart, abort, 1,000-object partial failure와 one-way credential command contract를
+검증한다. Rust fake server는 official SDK가 SigV4와 `If-None-Match`를 실제 request에 넣는지, 403/
+SignatureDoesNotMatch/clock skew/404/412를 fixed typed error로 분류하는지와 same upload ID continuation을
+검증한다. Test fixture credential은 provider에 전달하지 않고 result/log/artifact에 출력하지 않는다.
+
+Live R2는 isolated opt-in profile에서만 실행한다. Temporary object의 key/content는 non-secret random probe로
+제한하고 put→head→delete 모두 성공해야 한다. Terminal, diagnostic export와 test artifact에서 access/secret,
+Authorization, signed URL, provider response body와 local file content를 검색한다. 노출, conditional overwrite,
+completed part 재전송이 하나라도 관찰되면 Phase 09 stop gate다.
 
 ## Phase 08 durable queue focused verification
 

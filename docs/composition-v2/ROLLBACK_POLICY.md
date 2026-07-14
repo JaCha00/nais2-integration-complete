@@ -121,6 +121,20 @@ working-tree와 user data를 보존한 채 Phase 06 local commit만 `git revert`
 default나 repository schema를 바꾸지 않았으므로 reset/clean, repository/backup 삭제 또는
 destructive migration은 필요하지 않다.
 
+## Native R2 rollback
+
+Phase 09 source rollback은 먼저 새 upload 시작을 중지하고 foreground runtime이 active multipart를 abort하도록
+한다. Existing object, completed manifest, R2 upload IndexedDB와 OS credential vault를 삭제하지 않는다.
+Legacy Python/Wrangler panel과 current-session/delta/full-sync/dry-run backend는 그대로 유지되므로 native
+transport를 사용하지 않고 해당 workflow로 전환할 수 있다.
+
+그 뒤 unrelated `AGENTS.md`, generated `src-tauri/src-tauri/**`/target, user output, Asset Profile, queue DB와
+vault를 보존하고 Phase 09 local commit 하나만 `git revert`한다. `reset --hard`, `clean`, bucket delete,
+multipart sweeping, credential deletion과 destructive migration은 rollback 절차가 아니다. Revert한 binary는
+R2ProfileV2/UploadJob을 읽지 않지만 records는 future forward recovery를 위해 남긴다. Conditional conflict,
+secret exposure 또는 multipart duplication stop gate가 발생했다면 provider audit 뒤 credential rotation/
+remote multipart cleanup은 사용자의 별도 확인을 받아 수행한다.
+
 ## Stop conditions
 
 다음이면 cutover 또는 cleanup을 중단하고 compatibility layer를 유지한다.
@@ -133,3 +147,6 @@ destructive migration은 필요하지 않다.
 - authenticated generation/output smoke를 실행하지 못했다.
 - Android request가 success 또는 typed timeout/cancel로 유한 시간 안에 끝나지 않는다.
 - Scene cancel 뒤 sequence proposal, OutputWriter, history/image save 또는 queue resurrection이 발생한다.
+- credential/Authorization/signed URL이 renderer, terminal, diagnostic 또는 artifact에 노출된다.
+- non-overwrite R2 conflict가 existing object를 변경한다.
+- restart된 multipart가 persisted completed part를 처음부터 다시 보낸다.

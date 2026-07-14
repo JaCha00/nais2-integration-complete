@@ -35,6 +35,21 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 tokio = { version = "1", features = ["full"] }
 zip = "2.2"
 base64 = "0.22"
+sha2 = "0.10"
+
+# Phase 09 native R2 transport. Pin to the newest AWS S3 SDK line whose
+# declared MSRV matches this crate's Rust 1.88 contract. SigV4, conditional
+# writes, streaming bodies, and multipart operations stay SDK-owned.
+[target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies.aws-sdk-s3]
+version = "=1.122.0"
+default-features = false
+features = ["default-https-client", "http-1x", "rt-tokio", "rustls"]
+
+# R2 access/secret pairs are persisted in the OS credential vault. No read
+# command is exposed to the renderer; upload commands resolve references here.
+[target.'cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))'.dependencies.keyring]
+version = "=4.1.4"
+default-features = true
 
 # These crates back the desktop-only gates in src/lib.rs. Keeping updater here
 # also prevents its reqwest rustls-no-provider feature from leaking into Android.

@@ -1589,7 +1589,7 @@ line은 기존 passing contract의 expected diagnostic이다.
   완화하거나 skip하지 않고 Phase 08 source와 함께 추가했다.
 - `src/services/nai/payload.ts`, CompositionEngine/repository/migration, portable capability, old backup/v1
   Asset Profile/legacy metadata reader와 migration fixture는 교체·삭제하지 않았다. Electron,
-  better-sqlite3, Sharp, Marketplace/Supabase/catalog/OAuth dependency/runtime도 추가하지 않았다.
+  better-sqlite3, Sharp와 retired remote catalog dependency/runtime도 추가하지 않았다.
 
 ### Durable enqueue, execution and recovery
 
@@ -1708,3 +1708,134 @@ catch-and-ignore 또는 failure 숨김은 추가하지 않았다.
 - Next phase readiness: READY — durable queue recovery, failed-only retry, duplicate-output prevention and both stop
   gates are covered by deterministic behavior tests; opt-in live/release evidence remains an external gate, not a
   Phase 08 code regression.
+
+## Phase 09 — NATIVE R2 INTEGRATION
+
+기준 시각: 2026-07-14 (Asia/Seoul)
+
+### Baseline and characterization-first evidence
+
+- Base HEAD: `69566af4a6d5f5f89b5c7c077a105d7f1f81da74`
+- Branch: `agent/public-release-sync-20260714`
+- 시작 working tree의 unrelated `M AGENTS.md`와 generated untracked `src-tauri/src-tauri/**`를 보존했고
+  읽기 외 변경·삭제·stage하지 않았다.
+- 구현 전에 legacy Python/Wrangler의 current-session/delta/full-sync/dry-run exact request와 non-secret
+  Asset Profile R2 projection을 characterization test로 고정했다. 최초 hoisted mock ordering failure는 test
+  harness 문제였고 `vi.hoisted`로 수정한 뒤 focused baseline 3 files/38 tests가 exit 0이었다.
+- Existing CompositionEngine/repository/migration, OutputWriter, portable capability, payload builder/fixtures,
+  Scene worker/dual-token/stream/session/cancel/stale/retry/requeue/rotation/image release와 legacy importer/
+  reader/migration fixtures를 교체·삭제하지 않았다. Retired remote catalog runtime도 재도입하지 않았다.
+
+### Native profile, credential and upload boundaries
+
+1. `R2ProfileV2`는 account/jurisdiction/endpoint/bucket/prefix, `credentialRef`, transport, conflict policy와
+   public mode만 저장한다. Existing Asset Profile에는 bucket/keyPrefix/publicBaseUrl/accountId non-secret
+   projection만 기록한다.
+2. Renderer는 credential pair를 OS vault에 one-way 등록한 뒤 입력 state를 지운다. Rust만 `credentialRef`로
+   keyring secret을 resolve하며 renderer secret read command가 없다. Repository는 secret-shaped field,
+   Bearer value와 signed URL을 거부하고 diagnostics는 fixed typed error만 받는다.
+3. Desktop Rust adapter는 official `aws-sdk-s3=1.122.0`의 SigV4, rustls, streamed ByteStream, conditional
+   request와 multipart API를 사용한다. `keyring=4.1.4`와 AWS SDK는 desktop target dependency이고 Android
+   dependency tree에는 없다. File hashing은 1 MiB chunks, upload는 file/range stream이다.
+4. Guided setup은 transport, account/jurisdiction/endpoint, OS vault, connection HEAD, bucket/prefix,
+   temporary put→head→delete, path preview, conflict, public/custom domain, save의 10단계를 제공한다. Relay,
+   mobile native upload와 background worker는 explicit unsupported다.
+5. Existing Python/Wrangler panel과 네 deploy mode는 그대로다. Native directory UI는 current-session을
+   전체 directory로 재해석하지 않고 generation output의 explicit artifact set이 필요하다고 안내한다.
+
+### Conflict, queue and restart safety
+
+- Dry-run은 local scan/hash와 remote HEAD만 수행해 new/same/conflict/explicit overwrite/suffix availability를
+  표시하며 object나 multipart state를 만들지 않는다.
+- `fail`, `skip-same`, `suffix`의 single PUT과 multipart complete는 `If-None-Match: *`를 사용한다.
+  `skip-same`은 `x-amz-meta-nais2-sha256`, suffix는 content hash 첫 12자리의 deterministic key를 쓴다.
+  `overwrite`만 명시적 unconditional policy다.
+- Separate normalized IndexedDB repository가 profile, UploadJob과 manifest v2를 immediate transaction/readback,
+  unique dedupe key, CAS version과 terminal immutability로 저장한다. Retry는 bounded exponential ready-at이며
+  foreground runtime이 1초 간격으로 ready job을 다시 claim한다. Partial failure는 다음 object를 계속한다.
+- Multipart upload ID와 each completed part를 즉시 commit한다. Startup은 running을 queued로 회수하고 같은
+  upload ID에서 missing part만 전송한다. Cancel은 active multipart abort 뒤 terminal state를 쓴다. Complete
+  response가 유실되고 remote object가 checksum상 완료된 경우 `E_R2_ALREADY_COMPLETE`로 manifest를
+  reconcile해 처음부터 재업로드하지 않는다.
+- Manifest v2의 remote key/hash/size가 completed object를 delta plan에서 제외한다. Mobile은 profile read만
+  지원하고 foreground/background upload는 silent fallback 없이 unsupported다.
+
+### Dependency decision and impact
+
+- Selected: exact official AWS S3 SDK 1.122.0, Apache-2.0, Rust 1.88 compatible; minimal HTTP1/Tokio/rustls
+  features. Compatible AWS/Smithy transitive releases는 lockfile에 exact resolution됐다.
+- Selected: keyring 4.1.4, MIT OR Apache-2.0, desktop OS vault. Selected direct sha2 0.10,
+  MIT OR Apache-2.0, streaming digest.
+- Rejected: latest AWS S3 SDK because it requires Rust 1.94.1; handwritten SigV4/lower-level signer because request
+  canonicalization, conditional/multipart lifecycle와 safe error parsing을 재구현해야 한다.
+- Bundle/mobile: Rust dependencies do not enter the renderer bundle and `cargo tree --target aarch64-linux-android
+  -i aws-sdk-s3` prints no dependency. Desktop cold compile/binary graph grows; same-options clean Phase 08 binary가
+  없어 exact size delta는 측정하지 않았고 release artifact observation gate로 남겼다.
+
+### Final verification
+
+| 명령 | Exit | Suite/check count | 결과 |
+| --- | ---: | --- | --- |
+| `npm ci` | 0 | added 393; audited 394 | vulnerabilities 0 |
+| `npm ls --all` | 0 | dependency tree | invalid/extraneous 없음; platform optional만 unmet |
+| `npm run test:r2` | 0 | 4 files, 18/18 | profile/queue/conflict/restart/1,000 partial/legacy parity PASS |
+| `npm run lint` | 0 | ESLint max warnings 0 | PASS |
+| `npm run build` | 0 | 2,389 modules | tsc + Vite PASS |
+| `npm run test:composition` | 0 | 102 passed/1 skipped files; 750 passed/3 skipped tests | aggregate PASS; opt-in live only skipped |
+| `npm run test:unit` | 0 | 12 files, 42/42 | PASS |
+| `npm run test:payload-parity` | 0 | 5 files, 20/20 | payload diff 0 |
+| `npm run test:migration` | 0 | 15 files, 135/135 | compatibility fixtures PASS |
+| `npm run test:diagnostics` | 0 | 3 files, 27/27 | redaction/diagnostic PASS |
+| `npm run test:persistence` | 0 | 3 files, 15/15 + Chromium rescue | PASS |
+| `npm run test:credential-vault` | 0 | 5 files, 20/20 | existing vault contracts PASS |
+| `npm run test:queue` | 0 | 9 files, 42/42 | generation queue regression PASS |
+| `npm run test:secret-redaction` | 0 | 2 files, 13/13 | PASS |
+| `npm run test:characterization` | 0 | 6 files, 47/47 | legacy/current workflow PASS |
+| `npm run test:nai-core` | 0 | 50/50 | payload/source-edit PASS |
+| `npm run test:nai-transport` | 0 | 3 files, 14/14 | transport PASS |
+| `npm run test:smart-tools` | 0 | 3/3 | expected fallback 포함 PASS |
+| `npm run test:responsive-layout` | 0 | route/viewport matrix | Asset Modules 포함 PASS |
+| `npm run test:android-port` | 0 | contract gate | PASS |
+| `npm run test:android-release-contract` | 0 | contract gate | PASS |
+| `npm run test:remote-runtime-removal` | 0 | forbidden 0; allowlisted 313; tracked tooling 0 | PASS |
+| `cargo check --manifest-path src-tauri/Cargo.toml` | 0 | Rust dev profile | PASS |
+| Rust `nai_transport::tests` | 0 | 5/5 | existing transport PASS |
+| Rust `r2_native::` | 0 | 7/7 | SigV4/403/clock/404/412/multipart PASS |
+| Android-target inverse AWS dependency tree | 0 | no dependency printed | desktop-only boundary PASS |
+| `git diff --check` | 0 | tracked Phase diff | PASS |
+
+Diagnostic runs during implementation found three code/test issues and did not hide them: initial Rust fake server
+classified HEAD clock-skew as generic 403 because HEAD has no parsed body; the fixture now uses GET and provider code
+precedes status classification. A new adapter mock was first inserted into a profile fixture and caused DataCloneError;
+it was moved to the adapter. Aggregate source-contract wording expected English while UI text was Korean; the assertion
+now checks the language-independent artifact-set contract. A multipart lost-complete test then exposed stale CAS version
+use; reconciliation now re-reads the latest job before terminal commit. All final commands above were rerun at exit 0.
+
+### HANDOFF REPORT
+
+- Phase: 09 — NATIVE R2 INTEGRATION
+- Base HEAD: `69566af4a6d5f5f89b5c7c077a105d7f1f81da74`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: Rust native R2 adapter/commands and Cargo pins; R2 domain/profile/upload repository/coordinator/runtime;
+  guided setup UI and platform capabilities; R2/legacy/fake server tests; package script; composition-v2 architecture,
+  status, decision, risk, limitation, verification, rollback and ledger docs
+- Behavior added/changed: desktop one-way OS-vault setup, SDK-signed streamed native upload, read-only conflict preview,
+  conditional policy enforcement, resumable multipart/retry/abort, manifest v2 dedupe and foreground restart recovery
+- Preserved contracts: existing Python/Wrangler backend and four modes; Asset Profile non-secret projection;
+  CompositionEngine/repository/migration, OutputWriter, portable capability, payload fixture parity, Scene worker/
+  dual-token/stream/session/cancel/stale/retry/requeue/rotation/image release; legacy importers/readers/fixtures; user data
+- Tests and exit codes: final verification table above; every final executable gate exit 0
+- Artifact paths: ignored `dist/**`; ignored `src-tauri/target/**`; tracked implementation ledger. No credential,
+  Authorization, signed URL, local file content or image/base64 artifact was created
+- Not tested and exact reason: live Cloudflare R2/jurisdiction/custom domain and real WAN restart were not used because
+  no explicit isolated credential opt-in was provided; Android APK/emulator/physical M500_MIKU was not run because
+  native upload is intentionally unsupported on mobile and the existing device system-service blocker remains;
+  background upload is Phase 12; exact desktop binary delta lacks a same-options clean Phase 08 artifact
+- Remaining risks: R-015, R-016, R-019, R-024, R-026, R-027, R-031~R-034, R-037, R-038; provider-side multipart
+  expiry/reconciliation, live R2 evidence and desktop binary size observation remain open
+- Rollback procedure: stop/resume no new native work and abort active multipart; preserve R2 DB/manifest, OS vault,
+  Asset Profile, remote objects, user output, unrelated `AGENTS.md`, generated `src-tauri/src-tauri/**`/target and all
+  other user data; switch to retained Wrangler workflow and revert only this Phase 09 local commit. Never reset/clean,
+  delete bucket/DB/vault, sweep multipart or perform destructive migration without separate user confirmation
+- Next phase readiness: READY — native desktop upload, conditional safety, restart missing-part resume and all three stop
+  gates have deterministic coverage; live provider and background-worker evidence remain explicit later gates.

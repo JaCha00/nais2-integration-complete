@@ -11,6 +11,8 @@ flowchart LR
     ADAPTER["Workflow adapters\nMain / Scene / Style Lab"]
     QUEUE["Durable queue repository\nbatches / jobs / attempts / leases / resources"]
     EXEC["Main / Scene executor adapters\ndual-token / session / cancel / transport"]
+    R2Q["R2 upload repository\nprofiles / jobs / manifest v2"]
+    R2N["Native R2 Rust adapter\nOS vault / SigV4 / multipart"]
     OUT["OutputWriter\nstage / session gate / atomic commit / recovery"]
     CAP["RuntimeCapabilities\ndesktop / Android adapters"]
     LEGACY["Compatibility import/read layer\nold backup / v1 profile / metadata"]
@@ -18,6 +20,7 @@ flowchart LR
     GUI --> CMD --> REPO
     REPO --> ENGINE --> ADAPTER
     ADAPTER --> QUEUE --> EXEC --> OUT
+    GUI --> R2Q --> R2N
     QUEUE --> GUI
     CAP --> GUI
     CAP --> OUT
@@ -34,7 +37,10 @@ flowchart LR
   progress, retry lineage, batch failure policy와 output transaction linkage를 transaction/readback으로 소유한다.
 - executor adapters: current dual-token scheduler, streaming/source-edit 제한, generationSessionId/cancel/stale
   guard, NovelAI transport, save/history/image release 경계를 재사용한다. Queue는 이 계약을 대체하지 않는다.
-- `RuntimeCapabilities`: absolute path, file watch, tagger, embedded browser, R2 tooling, embedded PNG metadata, image formats를 platform adapter로 분리한다.
+- R2 upload repository: non-secret R2ProfileV2, resumable UploadJob의 upload ID/completed parts와 manifest v2를
+  별도 IndexedDB에 저장한다. Rust adapter만 OS vault secret을 읽고 official S3 SDK request를 수행한다.
+- `RuntimeCapabilities`: absolute path, file watch, tagger, embedded browser, legacy R2 tooling, native R2 profile/
+  foreground/background upload, embedded PNG metadata, image formats를 platform adapter로 분리한다.
 - `OutputWriter`: API response를 temp에 stage한 뒤 session `canCommit()`, atomic rename, workflow callback,
   journal recovery 순서로 저장한다. Durable execution은 prebound transaction/sourceJob ID를 사용하고
   terminal job commit 뒤 cleanup fault가 artifact rollback으로 되돌아가지 않게 한다.

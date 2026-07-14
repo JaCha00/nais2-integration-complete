@@ -100,3 +100,15 @@
 34. Durable job은 성공 artifact와 transaction linkage를 요구하므로 Main의 legacy `autoSave=false` memory-only
     결과와 동일하지 않다. Legacy memory-only 동작이 필요하면 compatibility release의 explicit legacy
     execution을 사용한다.
+35. Phase 09 native upload는 Windows/macOS/Linux foreground Tauri runtime만 지원한다. Android/iOS는
+    R2ProfileV2를 읽을 수 있지만 native foreground와 background upload를 지원하지 않으며 Wrangler로
+    silent fallback하지 않는다. Background worker 연결은 Phase 12 범위다.
+36. Guided setup의 `current-session` mode는 generation output에서 전달된 명시적 artifact set이 필요하다.
+    Directory picker 전체를 current session으로 재해석하지 않으므로 현재 directory UI에서는 delta,
+    full-sync 또는 dry-run을 사용한다. 기존 Python/Wrangler current-session 의미는 바뀌지 않는다.
+37. AWS SDK/keyring은 desktop binary와 cold compile dependency graph를 증가시킨다. Rust 1.88-compatible
+    exact versions와 minimal S3 features를 사용하고 mobile target graph에서는 제외했지만 clean Phase 08
+    release binary와 같은 host/options로 만든 정확한 size delta evidence는 아직 없다.
+38. Fake R2 server는 SigV4 header, 403/signature/clock skew, 404, 412 conditional conflict와 multipart
+    continuation을 검증하지만 live Cloudflare R2 credential, jurisdiction/custom domain, provider-side multipart
+    expiry와 1,000-object WAN interruption은 credential opt-in이 없어 실행하지 않았다.

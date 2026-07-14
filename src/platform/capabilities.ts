@@ -17,6 +17,9 @@ export interface RuntimeCapabilities {
     readonly localTaggerSidecar: RuntimeCapability
     readonly embeddedBrowser: RuntimeCapability
     readonly r2DeployTooling: RuntimeCapability
+    readonly r2ProfileRead: RuntimeCapability
+    readonly r2ForegroundUpload: RuntimeCapability
+    readonly r2BackgroundUpload: RuntimeCapability
     readonly embeddedPngMetadataWrite: RuntimeCapability
     readonly supportedImageFormats: readonly ('png' | 'webp')[]
 }
@@ -49,6 +52,18 @@ const NO_R2_TOOLING = unsupported(
     'R2 deploy tooling requires the desktop sidecar and local Wrangler environment.',
     'Export locally and deploy from the desktop app or Wrangler CLI.',
 )
+const NO_NATIVE_R2_FOREGROUND = unsupported(
+    'Native foreground R2 upload is not enabled in this mobile build.',
+    'Review the saved profile on mobile, then upload from the desktop app.',
+)
+const NO_NATIVE_R2_HOST = unsupported(
+    'Native foreground R2 upload requires a supported desktop Tauri build.',
+    'Use Wrangler on a desktop host or open the installed Windows, macOS, or Linux app.',
+)
+const NO_NATIVE_R2_BACKGROUND = unsupported(
+    'Background R2 upload workers are not part of the current capability set.',
+    'Keep the desktop app open for foreground upload or wait for the background-worker phase.',
+)
 
 /**
  * Deterministic platform matrix. Keep platform behavior here rather than placing
@@ -56,6 +71,7 @@ const NO_R2_TOOLING = unsupported(
  */
 export function createRuntimeCapabilities(platform: RuntimePlatform): RuntimeCapabilities {
     const mobile = platform === 'android' || platform === 'ios'
+    const nativeR2Desktop = platform === 'windows' || platform === 'macos' || platform === 'linux' || platform === 'desktop'
 
     return Object.freeze({
         platform,
@@ -64,6 +80,9 @@ export function createRuntimeCapabilities(platform: RuntimePlatform): RuntimeCap
         localTaggerSidecar: mobile ? NO_LOCAL_TAGGER : supported(),
         embeddedBrowser: mobile ? NO_EMBEDDED_BROWSER : supported(),
         r2DeployTooling: mobile ? NO_R2_TOOLING : supported(),
+        r2ProfileRead: supported(),
+        r2ForegroundUpload: mobile ? NO_NATIVE_R2_FOREGROUND : nativeR2Desktop ? supported() : NO_NATIVE_R2_HOST,
+        r2BackgroundUpload: NO_NATIVE_R2_BACKGROUND,
         // PNG metadata insertion is a byte-level TypeScript adapter and works on
         // both desktop and Android; it does not depend on a native image library.
         embeddedPngMetadataWrite: supported(),

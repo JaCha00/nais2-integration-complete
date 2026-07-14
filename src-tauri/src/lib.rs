@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 mod nai_transport;
+mod r2_native;
 #[cfg(mobile)]
 use tauri::Manager;
 
@@ -795,6 +796,18 @@ pub fn run() {
             record_diagnostic_event,
             nai_transport::nai_generate_request,
             nai_transport::cancel_nai_request,
+            r2_native::r2_store_credential,
+            r2_native::r2_credential_status,
+            r2_native::r2_delete_credential,
+            r2_native::r2_test_connection,
+            r2_native::r2_test_temporary_object,
+            r2_native::r2_scan_local_artifacts,
+            r2_native::r2_head_object,
+            r2_native::r2_put_object,
+            r2_native::r2_create_multipart,
+            r2_native::r2_upload_part,
+            r2_native::r2_complete_multipart,
+            r2_native::r2_abort_multipart,
         ])
         .setup(|_app| {
             let credential_vault_data_dir = _app

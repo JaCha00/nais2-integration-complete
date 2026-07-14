@@ -40,6 +40,10 @@
 | R-032 | managed queue resource가 장기 사용에서 AppData quota를 소비할 수 있다 | content-address dedup은 있지만 Phase 08에는 reference-aware garbage collection이 없다 | Medium | resource reuse/readback을 유지하고 quota/ENOSPC를 typed local I/O pause로 처리; destructive cleanup은 별도 retention 설계와 user confirmation 전 금지 | Open |
 | R-033 | queue startup lease 회수는 single app process를 전제로 한다 | startup은 coordinator 시작 전에 prior-process lease를 만료 시각과 무관하게 회수한다 | High | desktop single-instance 계약을 유지하고 multi-process/multi-tab 실행을 지원 완료로 선언하지 않는다. 별도 process fencing 전 concurrent app process 금지 | Watching |
 | R-034 | Queue Center projection polling 비용이 매우 큰 queue에서 누적될 수 있다 | DOM은 virtualized지만 selected batch의 lightweight projection은 주기적으로 다시 읽는다 | Medium | repository indexed pagination/summary와 10,000-job bounded-DOM contract를 유지; 실제 browser quota/long-run profiling은 release observation gate로 남김 | Watching |
+| R-035 | Native R2 credential 또는 signed URL이 renderer/diagnostic/log에 노출될 수 있다 | Rust가 OS vault에서 secret을 읽고 signed request를 생성하며 provider error가 request 내용을 echo할 수 있다 | Critical | renderer read command 금지, credentialRef-only DB, fixed typed Rust errors, signed URL/secret-shape rejection과 source/redaction tests 유지 | Mitigated |
+| R-036 | Conditional conflict가 existing object를 덮어쓸 수 있다 | preflight와 write 사이에 remote object가 생성될 수 있다 | Critical | fail/skip-same/suffix PUT 및 non-overwrite multipart complete에 `If-None-Match: *`; fake R2 412 single-request test와 read-only preview 유지 | Mitigated |
+| R-037 | Interrupted multipart가 restart 뒤 처음부터 중복 업로드될 수 있다 | process가 part 완료 뒤 state commit 전에 종료되거나 remote upload가 만료될 수 있다 | High | uploadId/completedParts 즉시 commit, running→queued recovery, same upload ID/missing-part-only tests; remote-expired upload reconciliation은 Watching | Watching |
+| R-038 | Official AWS SDK가 desktop binary/compile size와 MSRV를 크게 올릴 수 있다 | S3 SDK는 Smithy/runtime/TLS dependency graph를 추가한다 | High | Rust 1.88-compatible exact pins, minimal features, desktop-only target dependency, cargo check/test와 release artifact size 관찰; mobile graph에는 포함 금지 | Watching |
 
 ## 공통 stop 조건
 
