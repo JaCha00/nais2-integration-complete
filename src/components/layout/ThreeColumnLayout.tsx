@@ -316,7 +316,6 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                         <div className="flex min-w-0 flex-1 items-center">
                             <AnimatedNavBar items={navItems} />
                         </div>
-                        <ProductGuidance />
                         <Tip content={t('layout.toggleRightSidebar', 'Toggle Right Sidebar')}>
                             <button
                                 type="button"
@@ -334,11 +333,12 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                             </button>
                         </Tip>
                         <div className={cn(
-                            'fixed left-3 z-40 shrink-0 sm:static sm:z-auto',
+                            'fixed left-0 z-40 flex shrink-0 flex-col gap-2 sm:static sm:z-auto sm:flex-row',
                             organizerRoute
                                 ? 'bottom-[calc(0.75rem+env(safe-area-inset-bottom))]'
                                 : 'bottom-[calc(4.5rem+env(safe-area-inset-bottom))]',
                         )}>
+                            <ProductGuidance />
                             <DiagnosticDrawer />
                         </div>
                     </div>

@@ -199,7 +199,13 @@
     vault-unlock request lifetime과 Android restart checkpoint를 behavior/physical gate로 통과하기 전
     `secureLanSyncTransport`는 false로 유지한다.
 63. Phase 13 cannot provide a reliable numeric NovelAI image token count. Official V4/V4.5 documentation identifies T5 and
-    gives approximate combined guidance, but no versioned tokenizer artifact or reproducible golden endpoint is available;
-    V3 provenance is also insufficient. The UI therefore shows an explicit unavailable classification and payload-expanded
-    character/section lengths only. It does not present 512 as a hard limit, calculate a safety margin, or copy NAIS3 tokenizer
-    files. This limitation applies to all current models and unknown-model fallback until D-039's parity gate is met.
+    gives combined guidance, but no versioned tokenizer artifact or reproducible golden endpoint is available; V3 tokenizer
+    provenance is also insufficient. The UI therefore separates the current confirmed 512-token upper limit from unavailable
+    usage calculation, and shows payload-expanded character/section lengths. Unknown/future models assert no limit until a
+    capability entry is added; no safety margin or NAIS3 tokenizer file is used until D-039's parity gate is met.
+64. Phase 13 physical mobile UI evidence is incomplete. Android Studio ADB detected physical `SM-S928N`/API 36 and preserved
+    its installed 2.8.1 app/data, but the current ARM64 build produced no APK: the configured keystore path first referenced
+    the retired checkout, a process-temporary signer build ended at Gradle exit 1, and direct cached assemble timed out after
+    10 minutes. The scoped child process and temporary keystore were removed. No update install or UI-tree tap was performed,
+    because testing the old installed binary would not prove the new guidance flow. The final left-edge 44px mobile rail also
+    needs one fresh responsive matrix run after the three-attempt limit resets.

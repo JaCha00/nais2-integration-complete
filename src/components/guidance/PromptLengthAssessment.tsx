@@ -34,6 +34,12 @@ export function PromptLengthAssessment({ plan }: { plan: ReadonlyCompositionPlan
                 <dd className="font-medium">{t(`tokenAssessment.classifications.${assessment.classification}`)}</dd>
                 <dt>{t('tokenAssessment.model')}</dt>
                 <dd className="break-all font-mono text-right">{assessment.model}</dd>
+                <dt>{t('tokenAssessment.contextLimit')}</dt>
+                <dd className="font-medium">
+                    {assessment.contextLimitTokens === null
+                        ? t('tokenAssessment.limitUnavailable')
+                        : t('tokenAssessment.tokens', { count: assessment.contextLimitTokens })}
+                </dd>
                 <dt>{t('tokenAssessment.positiveCombined')}</dt>
                 <dd>{t('tokenAssessment.characters', { count: assessment.positive.combinedCharacters })}</dd>
                 <dt>{t('tokenAssessment.negativeCombined')}</dt>

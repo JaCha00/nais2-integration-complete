@@ -1327,6 +1327,9 @@
             "unavailable": "利用不可"
         },
         "model": "モデル",
+        "contextLimit": "確定トークン上限",
+        "limitUnavailable": "このモデルでは未確認",
+        "tokens": "{{count}}トークン",
         "positiveCombined": "ポジティブ合計",
         "negativeCombined": "ネガティブ合計",
         "characters": "{{count}}文字",

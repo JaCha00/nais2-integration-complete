@@ -292,6 +292,13 @@ sheet restores focus, uses mobile bottom/desktop side placement, honors reduced 
 separate progressive-disclosure section. Stable `DiagnosticCode` values route to the relevant guide without translation.
 
 Prompt sizing is deliberately fail-closed under D-039. Current payload expansion helpers produce final base and enabled
-character section lengths, while every current and unsupported model displays an explicit unavailable token accuracy grade.
-No tokenizer dependency, NAIS3 file, numeric token estimate, safety margin, or hard 512 ceiling was added. Existing
+character section lengths, while every model displays an explicit token-usage accuracy grade. Current supported models show
+their confirmed 512-token upper limit through a model capability registry; unknown/future models show no limit until
+registered, allowing V5 to expand independently. No tokenizer dependency, NAIS3 file, numeric usage estimate, or safety margin was added. Existing
 CompositionEngine, payload, OutputWriter, portable capability, generation/Scene worker and migration contracts are unchanged.
+
+The 2026-07-15 continuation corrected the product contract: 512 is a confirmed upper limit for registered current models,
+not a calculated usage estimate. A synthetic V5 capability test proves a larger future limit can be registered without
+changing prompt expansion. Source/build/full Vitest gates pass. Final responsive placement and physical Android interaction
+remain unproven: the three-run responsive limit ended after moving the 44px help/diagnostic controls to a left mobile rail,
+and the Android Studio ARM64 assemble did not produce an APK before the bounded build attempts/timeouts ended.

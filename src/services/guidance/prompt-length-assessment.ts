@@ -34,23 +34,30 @@ export interface PromptLengthAssessment {
     readonly classification: TokenAccuracyClassification
     readonly tokenCount: number | null
     readonly safetyMarginTokens: number | null
+    readonly contextLimitTokens: number | null
+    readonly limitClassification: 'confirmed' | 'unavailable'
     readonly tokenizerFamily: 't5' | 'undocumented' | 'unsupported'
     readonly reason: 'TOKENIZER_ARTIFACT_UNAVAILABLE' | 'UNSUPPORTED_MODEL'
     readonly positive: PromptSectionLengths
     readonly negative: PromptSectionLengths
 }
 
-const V4_T5_MODELS = new Set([
-    'nai-diffusion-4-5-curated',
-    'nai-diffusion-4-5-full',
-    'nai-diffusion-4-curated-preview',
-    'nai-diffusion-4-full',
-])
+export interface ModelTokenCapability {
+    readonly tokenizerFamily: 't5' | 'undocumented'
+    readonly contextLimitTokens: number
+}
 
-const CURRENT_UNDOCUMENTED_MODELS = new Set([
-    'nai-diffusion-3',
-    'nai-diffusion-furry-3',
-])
+export type ModelTokenCapabilityRegistry = Readonly<Record<string, ModelTokenCapability>>
+
+/** Model-scoped registry keeps a future V5 limit change out of prompt-length logic. */
+export const CURRENT_MODEL_TOKEN_CAPABILITIES: ModelTokenCapabilityRegistry = Object.freeze({
+    'nai-diffusion-4-5-curated': { tokenizerFamily: 't5', contextLimitTokens: 512 },
+    'nai-diffusion-4-5-full': { tokenizerFamily: 't5', contextLimitTokens: 512 },
+    'nai-diffusion-4-curated-preview': { tokenizerFamily: 't5', contextLimitTokens: 512 },
+    'nai-diffusion-4-full': { tokenizerFamily: 't5', contextLimitTokens: 512 },
+    'nai-diffusion-3': { tokenizerFamily: 'undocumented', contextLimitTokens: 512 },
+    'nai-diffusion-furry-3': { tokenizerFamily: 'undocumented', contextLimitTokens: 512 },
+})
 
 function sectionLengths(base: string, characters: readonly string[]): PromptSectionLengths {
     const characterCharacters = characters.reduce((total, prompt) => total + prompt.length, 0)
@@ -67,25 +74,27 @@ function sectionLengths(base: string, characters: readonly string[]): PromptSect
  * numeric token result stays closed until an official tokenizer artifact and
  * reproducible golden results establish model-level parity.
  */
-export function assessPromptLengths(input: PromptLengthAssessmentInput): PromptLengthAssessment {
+export function assessPromptLengths(
+    input: PromptLengthAssessmentInput,
+    capabilities: ModelTokenCapabilityRegistry = CURRENT_MODEL_TOKEN_CAPABILITIES,
+): PromptLengthAssessment {
     const enabledCharacters = input.characters.filter(character => character.enabled)
     const positiveBase = mergeQualityTags(removeComments(input.positivePrompt), input.qualityToggle)
     const negativeBase = mergeUcPreset(removeComments(input.negativePrompt), input.ucPreset)
     const positiveCharacters = enabledCharacters.map(character => removeComments(character.positive))
     const negativeCharacters = enabledCharacters.map(character => removeComments(character.negative))
-    const tokenizerFamily = V4_T5_MODELS.has(input.model)
-        ? 't5'
-        : CURRENT_UNDOCUMENTED_MODELS.has(input.model)
-            ? 'undocumented'
-            : 'unsupported'
+    const capability = capabilities[input.model]
+    const tokenizerFamily = capability?.tokenizerFamily ?? 'unsupported'
 
     return {
         model: input.model,
         classification: 'unavailable',
         tokenCount: null,
         safetyMarginTokens: null,
+        contextLimitTokens: capability?.contextLimitTokens ?? null,
+        limitClassification: capability === undefined ? 'unavailable' : 'confirmed',
         tokenizerFamily,
-        reason: tokenizerFamily === 'unsupported'
+        reason: capability === undefined
             ? 'UNSUPPORTED_MODEL'
             : 'TOKENIZER_ARTIFACT_UNAVAILABLE',
         positive: sectionLengths(positiveBase, positiveCharacters),

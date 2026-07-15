@@ -77,8 +77,9 @@ Phase 01 이후 engine 비교의 workflow source of truth는 각 workflow의 `cu
 | --- | --- | --- | --- | --- |
 | `product-guidance/token-gate-current-models.json` | NovelAI 공식 image model/quality-tag 문서 + synthetic prompts | numeric parity가 없는 fail-closed current-model matrix | model ID, accuracy classification, 문자 수만 기록 | 예 |
 
-이 fixture는 provider payload나 tokenizer 파일을 포함하지 않고 512를 확정 상한으로 저장하지 않는다. 공식 artifact와
-golden 결과가 확보되기 전까지 모든 current/unsupported model의 numeric result와 safety margin은 `null`이다.
+이 fixture는 provider payload나 tokenizer 파일을 포함하지 않는다. Current registered model은 확정 상한 512를
+기록하고 unknown/future model은 capability 등록 전 상한을 주장하지 않는다. 공식 tokenizer artifact와 golden 결과가
+확보되기 전까지 calculated usage와 safety margin은 `null`이다.
 
 ## Redaction policy
 

@@ -1329,6 +1329,9 @@
             "unavailable": "Unavailable"
         },
         "model": "Model",
+        "contextLimit": "Confirmed token upper limit",
+        "limitUnavailable": "Unavailable for this model",
+        "tokens": "{{count}} tokens",
         "positiveCombined": "Positive combined",
         "negativeCombined": "Negative combined",
         "characters": "{{count}} characters",

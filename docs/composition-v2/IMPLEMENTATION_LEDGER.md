@@ -2453,3 +2453,58 @@ also remains open as stated above.
   only this Phase 13 local commit; do not reset/clean/clear data or restore characters/4 token heuristics
 - Next phase readiness: BLOCKED — implementation and all source/build/Vitest gates pass, but final responsive placement and
   physical mobile interaction evidence are not complete.
+
+## Phase 13 continuation — confirmed 512 limit, V5 capability, and physical Android QA
+
+Date: 2026-07-15 (Asia/Seoul)
+
+Base HEAD was `0e6c87aeeffb0564533c16a8c0c915d4d12a52bf`. Product authority clarified that 512 is the
+confirmed current-model upper limit and future V5 may expand it. Phase 13 now separates this model capability from calculated
+usage: all registered current models report limit 512, unknown models report no limit, and a synthetic V5 registry injection
+reports 1024 without changing payload expansion. Calculated usage classification remains unavailable, safety margin remains
+null, diagnostics retain no characters/4 heuristic, and no tokenizer dependency or NAIS3 file was added.
+
+The responsive continuation ran three bounded matrices. A 44px header help button first clipped navigation; compacting its cue
+still consumed header width; moving two 44px icons to the lower-left row left a 6.3px `/tools` overlap. Following the validation
+limit, the best bounded workaround moved them to a left-edge vertical rail (x=0–44 based on the observed conflicting CTA
+starting at x=51). That final layout was not rerun and is not claimed PASS.
+
+Android Studio SDK/ADB detected physical `SM-S928N`, serial `R3CX902QFGM`, API 36. The installed final-ID 2.8.1 app and data
+were preserved. ARM64 build attempt 1 stopped immediately because `.env` referenced the retired checkout keystore path.
+Attempt 2 restored the user-owned signer only to an OS temp file and reached Kotlin/Gradle, then exited 1 without an APK.
+Attempt 3 ran direct cached `assembleArm64Debug` and timed out after 604 seconds without an APK. One scoped build child and one
+temporary keystore were removed; remaining temp keystores were 0. No install, launch, tap, screenshot, or UI-tree evidence was
+claimed because the existing installed binary predates this continuation.
+
+### Verification
+
+| Gate | Exit | Result |
+| --- | ---: | --- |
+| Phase 13 focused | 0 | 4 files, 21/21 including current 512, unknown fallback, synthetic V5=1024 |
+| payload parity/provenance | 0 | 5 files, 20/20 |
+| diagnostics | 0 | 3 files, 27/27 |
+| full `test:composition` | 0 | 128 passed/1 skipped files; 984 passed/3 skipped tests |
+| final lint / build | 0 / 0 | ESLint clean; TypeScript + Vite, 2,404 modules |
+| responsive layout | 1 | three bounded runs; final left-edge vertical rail not rerun |
+| Android current APK | 1 / 124 | wrapper build exit 1; direct assemble timeout 604s; APK absent |
+| physical update install/UI tree | not run | no current APK; old installed binary was not used as evidence |
+
+### HANDOFF REPORT
+
+- Phase: 13 continuation — confirmed limit and physical mobile QA
+- Base HEAD: `0e6c87aeeffb0564533c16a8c0c915d4d12a52bf`
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Changed files: model prompt capability/assessment/UI; ko/en/ja; responsive help/diagnostic placement; golden fixtures/tests;
+  Phase 13 decision/status/risk/limitation/verification/ledger docs
+- Behavior added/changed: registered current models show confirmed 512 upper limit; unknown/future models show no asserted
+  limit until registered; V5 can provide a larger value without prompt-expansion changes
+- Preserved contracts: payload expansion/parity, unavailable calculated usage, CompositionEngine/repository/migration,
+  OutputWriter/capabilities, Scene orchestration, credentials/user data/importers/readers and removed-runtime boundaries
+- Tests and exit codes: table above
+- Artifact paths: ignored `dist/**`; no new APK; temporary keystore removed (remaining 0)
+- Not tested and exact reason: final responsive vertical rail was applied after the third allowed matrix; physical sheet/touch/
+  focus QA had no current APK because ARM64 builds failed/timed out; live NovelAI/R2 was not opt-in or needed
+- Remaining risks: limitation 64; physical mobile layout/focus/touch and a clean Android Studio update-install remain open
+- Rollback procedure: preserve device/app/user/vault/output/queue/R2/sync data and unrelated working tree; revert only this
+  continuation commit; do not uninstall, clear app data, delete signer material, or collapse per-model limits into one constant
+- Next phase readiness: BLOCKED — corrected 512/V5 contract and source gates pass, but final responsive and physical QA do not.

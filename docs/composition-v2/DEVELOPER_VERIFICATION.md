@@ -328,6 +328,13 @@ npm run build
 
 The focused suite covers fresh/returning state, locked vault/no credential, optional R2, desktop/mobile sheet placement,
 keyboard/touch target and focus restore source contracts, reduced motion, ko/en/ja key parity, payload-aligned section golden
-fixtures, all current models, unknown-model fallback, and DiagnosticCode guide routing. A passing test must not introduce a
-numeric token result or `512` limit. Official research is recorded in D-039 and the fixture provenance; no live NovelAI/R2
+fixtures, all current models, unknown-model fallback, future-model registry injection, and DiagnosticCode guide routing. A
+passing test must show the confirmed 512 upper limit for registered current models without inventing calculated usage, and
+must leave unknown models limit-free. Official research is recorded in D-039 and fixture provenance; no live NovelAI/R2
 credential is required or permitted by default. Manual physical Android touch QA remains separate from source/build gates.
+
+For physical Phase 13 QA, use Android Studio's SDK/ADB attached device, build the current ARM64 APK with the existing
+user-owned signer, and update-install without uninstall or app-data clear. Derive all tap coordinates from `uiautomator dump`,
+then verify help trigger → bottom sheet → output/privacy controls → close/focus return. Do not use an older installed binary as
+evidence. The 2026-07-15 run detected `SM-S928N`/API 36 but current assemble produced no APK within three bounded attempts;
+therefore install/UI-tree interaction is explicitly not PASS.

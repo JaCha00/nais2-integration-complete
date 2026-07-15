@@ -1330,6 +1330,9 @@
             "unavailable": "계산 불가"
         },
         "model": "모델",
+        "contextLimit": "확정 토큰 상한",
+        "limitUnavailable": "이 모델은 확인되지 않음",
+        "tokens": "{{count}} 토큰",
         "positiveCombined": "포지티브 합계",
         "negativeCombined": "네거티브 합계",
         "characters": "{{count}}자",

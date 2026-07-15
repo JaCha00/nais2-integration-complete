@@ -39,11 +39,11 @@ export function DiagnosticDrawer() {
             <button
                 {...getDiagnosticDrawerTriggerProps(open)}
                 aria-haspopup="dialog"
-                className="min-h-11 rounded-control border border-border px-3 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                className="h-11 w-11 shrink-0 rounded-control border border-border text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring sm:w-auto sm:px-3"
                 aria-label="진단 로그 열기"
             >
                 <ListTree className="mr-1.5 inline h-4 w-4" aria-hidden="true" />
-                진단
+                <span className="hidden sm:inline">진단</span>
             </button>
             <Dialog open={drawerOpen} onOpenChange={openValue => (openValue ? open() : closeDrawer())}>
                 <DialogContent className="max-h-[85dvh] max-w-4xl overflow-y-auto p-0">

@@ -15,6 +15,8 @@ describe('Phase 13 token estimator gate', () => {
         expect(result.tokenizerFamily).toBe(expected.family)
         expect(result.tokenCount).toBeNull()
         expect(result.safetyMarginTokens).toBeNull()
+        expect(result.contextLimitTokens).toBe(expected.contextLimit)
+        expect(result.limitClassification).toBe('confirmed')
         expect(result.positive).toMatchObject(fixture.expectedLengths.positive)
         expect(result.negative).toMatchObject(fixture.expectedLengths.negative)
         expect(result.positive.characterPromptCharacters).toEqual([4])
@@ -34,8 +36,28 @@ describe('Phase 13 token estimator gate', () => {
             reason: 'UNSUPPORTED_MODEL',
             tokenCount: null,
             safetyMarginTokens: null,
+            contextLimitTokens: null,
+            limitClassification: 'unavailable',
         })
         expect(JSON.stringify(result)).not.toContain('512')
+    })
+
+    it('accepts a future V5 capability without changing prompt expansion logic', () => {
+        const result = assessPromptLengths({
+            ...fixture.input,
+            ucPreset: 2,
+            model: 'nai-diffusion-5',
+        }, {
+            'nai-diffusion-5': { tokenizerFamily: 't5', contextLimitTokens: 1024 },
+        })
+
+        expect(result).toMatchObject({
+            model: 'nai-diffusion-5',
+            classification: 'unavailable',
+            contextLimitTokens: 1024,
+            limitClassification: 'confirmed',
+        })
+        expect(result.positive).toMatchObject(fixture.expectedLengths.positive)
     })
 
     it('removes comments and applies the same quality and UC expansion helpers as the payload path', () => {

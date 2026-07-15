@@ -117,7 +117,7 @@ export function ProductGuidance() {
             <button
                 ref={triggerRef}
                 type="button"
-                className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-control border border-border px-3 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center gap-2 rounded-control border border-border text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring xl:w-auto xl:px-3"
                 onClick={() => {
                     setDiagnosticCode(null)
                     setActiveSection('credential')
@@ -133,7 +133,7 @@ export function ProductGuidance() {
                 <span className="hidden xl:inline">{t('productGuidance.trigger')}</span>
                 {guidance.showOnboardingCue && (
                     <>
-                        <span className="h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
+                        <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary" aria-hidden="true" />
                         <span className="sr-only">{t('productGuidance.onboardingAvailable')}</span>
                     </>
                 )}

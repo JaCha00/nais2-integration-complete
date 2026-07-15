@@ -23,7 +23,7 @@ describe('Phase 13 product guidance UI contract', () => {
     it('provides keyboard, touch, focus restore, reduced motion, and responsive sheet contracts', async () => {
         const source = await readFile(resolve(process.cwd(), 'src/components/guidance/ProductGuidance.tsx'), 'utf8')
         expect(source).toContain('type="button"')
-        expect(source).toContain('min-h-11 min-w-11')
+        expect(source).toContain('h-11 w-11')
         expect(source).toContain('focus-visible:ring-2')
         expect(source).toContain('aria-controls="product-guidance-sheet"')
         expect(source).toContain("side={isMobileRuntime ? 'bottom' : 'right'}")

@@ -74,9 +74,9 @@
 ## R-055 — False precision in NovelAI token guidance
 
 - Status: mitigated, monitor
-- Risk: a generic tokenizer or characters/4 heuristic can disagree with the provider's model-specific image tokenization,
-  hide automatic quality/UC expansion, and make an approximate provider allowance look like a hard ceiling.
+- Risk: a generic tokenizer or characters/4 heuristic can disagree with model-specific image tokenization, hide automatic
+  quality/UC expansion, or incorrectly carry the current confirmed 512-token limit into a future V5 model.
 - Mitigation: Phase 13 is fail-closed for every current and unsupported model; it exposes the accuracy classification and
-  only payload-aligned character/section lengths. Numeric token count and safety margin are `null`, diagnostics omit the
-  former heuristic, and golden fixtures lock this behavior.
+  payload-aligned character/section lengths. Current supported models obtain their confirmed 512 limit from an extensible
+  capability registry; unknown/future models assert no limit until registered. Usage and safety margin remain `null`.
 - Reopen condition: NovelAI publishes a versioned artifact/golden result, or the payload/model mapping changes.

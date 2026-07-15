@@ -10,7 +10,7 @@
       "transformed": true,
       "sensitiveDataRemoved": true,
       "transformations": [
-        "Recorded only model IDs, unavailable classifications, and synthetic prompt character counts.",
+        "Recorded model IDs, confirmed current context limits, unavailable usage classifications, and synthetic prompt character counts.",
         "Did not copy NAIS3 tokenizer files or claim numeric provider token parity."
       ]
     },
