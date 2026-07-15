@@ -336,5 +336,29 @@ credential is required or permitted by default. Manual physical Android touch QA
 For physical Phase 13 QA, use Android Studio's SDK/ADB attached device, build the current ARM64 APK with the existing
 user-owned signer, and update-install without uninstall or app-data clear. Derive all tap coordinates from `uiautomator dump`,
 then verify help trigger → bottom sheet → output/privacy controls → close/focus return. Do not use an older installed binary as
-evidence. The 2026-07-15 run detected `SM-S928N`/API 36 but current assemble produced no APK within three bounded attempts;
-therefore install/UI-tree interaction is explicitly not PASS.
+evidence.
+
+The 2026-07-16 continuation passed this gate on `SM-S928N`/API 36 with the current signed ARM64 debug APK. `install -r`
+preserved first-install time, data directory, file count and size; touch-opened Korean output/R2 guidance and keyboard
+TAB/Enter/Escape focus restoration passed. When remaining QA was redirected to Hiby M500_MIKU or an emulator, Hiby was not
+attached at test-bed selection, so Android Studio AVD `nais2-api35`/API 35 was used. Hiby appeared only after the permitted
+AVD matrix and shutdown were complete. Build and verify the x86_64 artifact with:
+
+```text
+npx --no-install tauri android build --debug --apk --ci --target x86_64
+node scripts/verify-android-apk.mjs --mode debug --apk src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk --install --device emulator-5554
+```
+
+Run the build command under the same process-scoped `ANDROID_KEYSTORE_PATH`, `ANDROID_KEY_ALIAS` and
+`ANDROID_KEY_PASSWORD` setup used by `build-android-signed-local.ps1`; keep the keystore copy in the OS temp directory and
+remove it in `finally`. Do not put the password or decoded keystore bytes in the command line, log or artifact.
+
+The signed x86_64 APK passed package/version/SDK/ABI/signature/alignment checks, launch, English locked-vault guidance,
+output/R2 touch disclosure, Enter/Escape focus restoration and cold process recreation. Raw UI XML and screenshots were
+temporary and deleted. `updateBaseline: null` is valid only with `firstReleaseForApplicationId: true` and a
+`firstReleaseVersion` equal to the current package version; existing and future baseline tags must use stable
+`v<major>.<minor>.<patch>` within versionCode bounds, and release validation retains the exact `v<version>` tag check.
+
+This device evidence does not override the responsive browser gate. The 2026-07-16 `test:responsive-layout` runs remain exit
+1 at 390px because two 44px controls plus their 8px gap cannot fit the organizer's 89px safe vertical interval. Do not loosen
+the overlap/clipping assertions; validate a route-specific horizontal organizer rail in a fresh session.

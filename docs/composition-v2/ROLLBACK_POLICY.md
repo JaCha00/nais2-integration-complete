@@ -228,3 +228,11 @@ and migration fixtures. Do not reset, clean, clear app data, delete credentials,
 After revert, confirm payload fixture parity, diagnostics redaction, current Composition/Scene resolved plans, credential vault,
 output and queue baselines. If a future tokenizer implementation produces unverified numeric output, disable the numeric display
 immediately and fall back to D-039 character counts; do not retain the old characters/4 heuristic.
+
+The 2026-07-16 Android verification-tool continuation is independently reversible only after policy has a verified stable
+update baseline, `firstReleaseForApplicationId: false`, and the immutable `firstReleaseVersion` record remains intact.
+Restoring the prior release/APK verifier while `updateBaseline` is null reintroduces the known `.tag` crash, so release
+verification and publication must instead remain BLOCKED. After any allowed revert, rerun the stable `v<version>` tag,
+certificate, package/versionCode, SDK, ABI and alignment gates. Never replace the null-baseline branch with a verifier bypass. Preserve the
+`/keystore_base64.txt` ignore rule (or relocate the file outside the checkout before any source revert); do not stage, delete,
+print or decode signing material into a tracked or retained artifact. Generated APKs and Android build caches are not authority.

@@ -299,6 +299,16 @@ CompositionEngine, payload, OutputWriter, portable capability, generation/Scene 
 
 The 2026-07-15 continuation corrected the product contract: 512 is a confirmed upper limit for registered current models,
 not a calculated usage estimate. A synthetic V5 capability test proves a larger future limit can be registered without
-changing prompt expansion. Source/build/full Vitest gates pass. Final responsive placement and physical Android interaction
-remain unproven: the three-run responsive limit ended after moving the 44px help/diagnostic controls to a left mobile rail,
-and the Android Studio ARM64 assemble did not produce an APK before the bounded build attempts/timeouts ended.
+changing prompt expansion. On 2026-07-16 the repaired signing inputs produced a signed ARM64 debug APK. Signature, package,
+version, SDK, ABI and alignment verification passed; a same-ID/same-signer `install -r` on SM-S928N preserved first-install
+time, data directory, 104 files and 5312 KiB while only `lastUpdateTime` changed. UI-tree-derived touch and keyboard QA
+opened the Korean guidance sheet, exposed output/privacy and mobile capability alternatives, and restored trigger focus.
+
+After the user redirected remaining Android work to Hiby M500_MIKU or an emulator, Hiby was not present when the test bed was
+selected, so Android Studio AVD `nais2-api35` was used. Hiby appeared in ADB only after the approved AVD matrix and shutdown
+were complete; no remaining test required a second device run. A signed x86_64 APK passed verify/install/startup, English locked-vault guidance,
+output/R2 touch disclosure, Enter/Escape focus restoration and process recreation without a package crash. No raw UI tree,
+screenshot, prompt, credential or image artifact was retained. The remaining Phase 13 blocker is the automated responsive
+contract: three bounded 390px runs proved the vertical rail cannot fit the 89px organizer-safe interval with two 44px
+targets plus an 8px gap. Experimental placement changes were reverted; a route-specific horizontal organizer rail is the
+next-session candidate and must pass the unchanged full matrix before Phase 13 is READY.

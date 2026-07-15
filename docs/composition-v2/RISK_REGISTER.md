@@ -80,3 +80,16 @@
   payload-aligned character/section lengths. Current supported models obtain their confirmed 512 limit from an extensible
   capability registry; unknown/future models assert no limit until registered. Usage and safety margin remain `null`.
 - Reopen condition: NovelAI publishes a versioned artifact/golden result, or the payload/model mapping changes.
+
+## R-056 — Mobile guidance rail can overlap or clip route controls
+
+- Status: Open
+- Risk: the current two-button vertical guidance/diagnostic rail sits on the mobile viewport edge. At 390px, its x=0
+  placement loses 8px to a clipping ancestor. Insetting it clears that loss but overlaps an organizer slot; lowering it
+  clears the slot but clips the diagnostic target at the ancestor's bottom edge.
+- Evidence: three bounded 2026-07-16 responsive runs reproduced those three mutually shifting failures. The organizer-safe
+  vertical interval is 89px while two 44px targets plus the required 8px gap need 96px. Touch and keyboard activation passed
+  on SM-S928N and API 35 AVD, but device success does not waive the browser overlap/clipping contract.
+- Mitigation: keep the current runtime placement until a fresh session evaluates a route-specific horizontal rail for
+  `/organizer`; rerun the unchanged complete viewport/route matrix, lint/build and Android touch regression. Do not shrink
+  touch targets, remove the gap assertion, or add a route overlay without organizer CTA evidence.

@@ -2350,7 +2350,7 @@ written to tracked files or logs. Existing apps/data were not uninstalled or cle
 Cloudflare Worker + SQLite Durable Object + R2 `prime/nais` source was added with Android Keystore ECDSA pairing/request signing,
 sequence/nonce/replay, signed idempotent duplicate, tombstone/no-late-commit, bounded 2 MiB JSON/5 MiB part, timeout/retry and
 checkpoint-after-R2-ack contracts. The Android executor is installed in UI, UIDT, WorkManager and notification process recovery;
-pause/resume/retry/cancel notification actions and pending remote cancel persistence are tracked. Supabase/Marketplace/catalog runtime
+pause/resume/retry/cancel notification actions and pending remote cancel persistence are tracked. Removed remote catalog/provider runtime
 was not added. Wrangler deployed the Worker and created `prime/nais/.keep`, but live pairing returned fixed 403 after three bounded
 secret-delivery attempts; no device byte transfer was run and capabilities remain false.
 
@@ -2404,8 +2404,8 @@ Official NovelAI Image Generation Models and Quality Tags documentation was revi
 V4/V4.5 and approximate combined prompt guidance, but supplies neither a versioned tokenizer artifact nor reproducible
 golden endpoint; V3 provenance is also insufficient. D-039 therefore fails closed: all current/unsupported models show an
 unavailable classification, unchanged model ID, and payload-expanded base/enabled-character section lengths only. Numeric
-count/safety margin are null, 512 is not a hard ceiling, diagnostics no longer emit characters/4, and no NAIS3 file or
-dependency was added.
+count/safety margin are null; registered current models display a separate confirmed 512 upper limit, unknown models have no
+asserted limit, diagnostics no longer emit characters/4, and no NAIS3 file or dependency was added.
 
 Verification summary:
 
@@ -2434,7 +2434,7 @@ also remains open as stated above.
 
 - Phase: 13 — PRODUCT GUIDANCE AND TOKEN ESTIMATION
 - Base HEAD: `7d59182c32123dce148f09dd63a03e061face6d1`
-- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Resulting local commit: `0e6c87aeeffb0564533c16a8c0c915d4d12a52bf`
 - Changed files: guidance services/components; resolved-plan and diagnostics integration; settings version state; ko/en/ja
   locale trees; diagnostic prompt summary; Phase 13/provenance fixtures and tests; composition-v2 decision/risk/limitation/
   status/verification/rollback/ledger docs
@@ -2442,7 +2442,7 @@ also remains open as stated above.
   unsupported mobile alternatives, and fail-closed final-prompt character breakdown with visible accuracy classification
 - Preserved contracts: current CompositionEngine/repository/migration, `payload.ts` and fixture parity, OutputWriter/portable
   capabilities, Scene workers/dual-token/stream/session/cancel/stale/retry/requeue/rotation/image-release, old importers/readers,
-  user data, and removed Marketplace/Supabase/catalog boundaries
+  user data, and removed remote catalog/provider boundaries
 - Tests and exit codes: table above
 - Artifact paths: ignored `dist/**`; tracked synthetic fixture contains no provider payload or tokenizer file
 - Not tested and exact reason: final responsive matrix after shell-toolbar fix was not rerun because AGENTS.md's three-attempt
@@ -2493,7 +2493,7 @@ claimed because the existing installed binary predates this continuation.
 
 - Phase: 13 continuation — confirmed limit and physical mobile QA
 - Base HEAD: `0e6c87aeeffb0564533c16a8c0c915d4d12a52bf`
-- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Resulting local commit: `8f76e3bfe7ed3bbba659cb4210fd0d4ac3df2520`
 - Changed files: model prompt capability/assessment/UI; ko/en/ja; responsive help/diagnostic placement; golden fixtures/tests;
   Phase 13 decision/status/risk/limitation/verification/ledger docs
 - Behavior added/changed: registered current models show confirmed 512 upper limit; unknown/future models show no asserted
@@ -2508,3 +2508,93 @@ claimed because the existing installed binary predates this continuation.
 - Rollback procedure: preserve device/app/user/vault/output/queue/R2/sync data and unrelated working tree; revert only this
   continuation commit; do not uninstall, clear app data, delete signer material, or collapse per-model limits into one constant
 - Next phase readiness: BLOCKED — corrected 512/V5 contract and source gates pass, but final responsive and physical QA do not.
+
+## Phase 13 continuation — signed Android closure and first-release verifier
+
+Date: 2026-07-16 (Asia/Seoul)
+
+Base HEAD was `8f76e3bfe7ed3bbba659cb4210fd0d4ac3df2520`. The user repaired `KEYSTORE_PATH` and the local
+Base64 source. Validation compared only resolved paths, decoded bytes, alias readability and certificate policy; password,
+Base64 and private key material were not printed. The two signing inputs matched, alias `release` was readable, and the
+certificate matched `android-release-policy.json`. `/keystore_base64.txt` is now explicitly ignored and neither signing file
+was staged. Final cleanup found one stale `nais-signing-*.jks` from the prior 2026-07-15 attempt inside the OS temp directory;
+that single temp copy was removed after path containment verification, leaving zero temp signing files.
+
+The existing signed-local script produced the current ARM64 debug APK. Before install, the APK verifier exposed a separate
+first-release policy defect: `updateBaseline` is intentionally null for the new application ID, but both release-version and
+APK verification unconditionally dereferenced `.tag`. The failing CLI behavior was reproduced, then a shared fail-closed
+resolver was added. Null is accepted only with `firstReleaseForApplicationId: true` and `firstReleaseVersion` equal to the
+current package version; a future baseline must use stable `v<major>.<minor>.<patch>` within versionCode bounds, and the
+release command retains the exact `v<version>` rule. Package identity, versionCode, signer,
+SDK, ABI and alignment checks remain unchanged.
+
+The verified ARM64 APK was update-installed with `adb install -r` on `SM-S928N`/API 36. First-install time, data directory,
+104 files and 5312 KiB were unchanged; only `lastUpdateTime` advanced. UI-tree-derived taps opened Korean guidance and its
+output/privacy and unsupported R2 sections. TAB/Enter opened the sheet, Escape closed it, and focus returned to Help. Android
+hardware Back backgrounded the Activity rather than closing the sheet, so explicit Close/Escape remains the verified focus
+path.
+
+The user then required remaining Android tests on Hiby M500_MIKU or an emulator. Hiby was not attached at test-bed selection,
+so Android Studio AVD `nais2-api35` (`emulator-5554`, x86_64, API 35) was started without wiping it. Hiby appeared in ADB only
+after the permitted AVD matrix and shutdown were complete, when no remaining test required a second device run. A
+process-scoped OS-temp signer and the existing
+x86_64 libsodium archive produced a signed universal debug APK. Verify/install/launch passed; English locked-vault guidance,
+output/R2 reason and alternative, touch expansion, Enter/Escape focus restoration and force-stop cold process recreation all
+passed. The cold Activity started in 775ms; the WebView accessibility tree settled after an additional five seconds. No raw
+UI XML, screenshot, app log, prompt, token, signed URL, Authorization header or image/Base64 artifact was retained.
+
+The responsive gate remains the only Phase 13 implementation blocker. Three bounded 390px runs found: (1) the current x=0
+vertical rail loses 8px to a clipping ancestor, (2) an 8px inset overlaps an organizer slot by 23x11px, and (3) lowering the
+inset rail clips the diagnostic button by 8px at the bottom. The organizer-safe vertical interval is 89px, less than the 96px
+needed for two 44px targets plus an 8px gap. Experimental runtime changes were reverted after the third attempt. A
+route-specific horizontal organizer rail is the next-session candidate; tests must not be loosened.
+
+### Verification
+
+| Gate | Exit | Result |
+| --- | ---: | --- |
+| first-release APK verifier characterization | 1 | reproduced null `.tag` dereference before fix |
+| Android release contract / release version / exact tag | 0 / 0 / 0 | first-release null accepted; `v2.8.1` retained |
+| signed ARM64 debug build | 0 | current `app-arm64-debug.apk`, 231,551,469 bytes |
+| ARM64 APK verify | 0 | final ID, 2.8.1/2008001, min 24, target 36, arm64-v8a, signer and alignment |
+| SM-S928N update install / launch | 0 / 0 | same-signer `install -r`; app data preserved; crash buffer clean |
+| SM-S928N touch / keyboard | 0 / 0 | Korean guidance, output/R2 alternatives, TAB/Enter/Escape focus restore |
+| signed x86_64 debug build | 0 | current `app-universal-debug.apk` |
+| AVD verify/install/launch/recreation | 0 | API 35 x86_64; English guidance and crash-free cold recreation |
+| Phase 13 + Android characterization | 0 | 5 files, 24/24 |
+| lint / TypeScript + Vite build | 0 / 0 | ESLint clean; 2,404 modules |
+| unit / payload parity | 0 / 0 | 12 files 42/42; 5 files 20/20 |
+| full `test:composition` | 0 | 128 passed/1 skipped files; 984 passed/3 skipped tests |
+| migration / diagnostics / persistence / vault | 0 / 0 / 0 / 0 | 135/135; 27/27; 15/15 + rescue; 20/20 |
+| queue / sync / R2 / organizer | 0 / 0 / 0 / 0 | 42/42; 180/180; 18/18; 20/20 |
+| redaction / characterization / NAI core / transport | 0 / 0 / 0 / 0 | 13/13; 50/50; 50/50; 14/14 |
+| smart tools / Android port / removed-runtime gate | 0 / 0 / 0 | 3/3; source contract PASS; search gate PASS |
+| responsive layout | 1 | three bounded runs; R-056 remains Open and experiments were reverted |
+
+### HANDOFF REPORT
+
+- Phase: 13 — PRODUCT GUIDANCE AND TOKEN ESTIMATION, signed Android/verifier continuation
+- Base HEAD: `8f76e3bfe7ed3bbba659cb4210fd0d4ac3df2520`
+- Resulting local commit: `SELF` (report the resolved hash from `git rev-parse HEAD`)
+- Changed files: exact local signing-source ignore; `android-release-policy.json` version-pinned first-release marker; shared
+  Android first-release baseline resolver; release-version/APK and Android release contract scripts; composition-v2
+  decision/status/risk/limitation/verification/rollback/ledger docs
+- Behavior added/changed: build verification accepts the explicit first-application-ID null baseline only for version 2.8.1,
+  without relaxing `v*` release tags, versionCode bounds or any APK identity/signing gate; no product runtime behavior changed
+- Preserved contracts: current CompositionEngine/repository/migration, `payload.ts` and fixture parity, OutputWriter/portable
+  capability, Scene worker/dual-token/stream/session/cancel/stale/retry/requeue/rotation/image release, importers/readers,
+  user/app/vault/output/queue/sync/R2 data and removed remote catalog/provider boundaries
+- Tests and exit codes: table above; every executable baseline gate passed except unchanged responsive layout
+- Artifact paths: ignored `src-tauri/gen/android/app/build/outputs/apk/arm64/debug/app-arm64-debug.apk`, ignored
+  `src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk`, ignored `dist/**` and target/build cache
+- Not tested and exact reason: Hiby M500_MIKU was absent at test-bed selection, so remaining device QA completed on the
+  approved AVD; its late appearance after AVD shutdown did not require duplicating the completed permitted matrix. Live
+  NovelAI/R2 generation/upload was not opt-in and was unnecessary; no release-publication or rollback-install drill ran
+- Remaining risks: R-056 responsive rail placement is Open; physical Android hardware Back exits/backgrounds the Activity
+  instead of proving sheet-close focus restoration; Hiby-specific layout remains unobserved
+- Rollback procedure: preserve device/app/user/vault/output/queue/sync/R2 data, signer files, immutable
+  `firstReleaseVersion`, unrelated working tree and the `/keystore_base64.txt` safety ignore. Do not revert the resolver while
+  `updateBaseline` is null; that restores the known verifier crash, so keep release verification/publication BLOCKED until a
+  verified stable prior tag exists. Never uninstall, clear app data, delete signing material, relax `v*` tags, or invent a baseline
+- Next phase readiness: BLOCKED — signed ARM64/x86_64 build and mobile touch/keyboard evidence now pass, but the unchanged
+  responsive overlap/clipping gate is still exit 1 under R-056.

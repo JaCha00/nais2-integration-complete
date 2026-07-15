@@ -203,9 +203,12 @@
     provenance is also insufficient. The UI therefore separates the current confirmed 512-token upper limit from unavailable
     usage calculation, and shows payload-expanded character/section lengths. Unknown/future models assert no limit until a
     capability entry is added; no safety margin or NAIS3 tokenizer file is used until D-039's parity gate is met.
-64. Phase 13 physical mobile UI evidence is incomplete. Android Studio ADB detected physical `SM-S928N`/API 36 and preserved
-    its installed 2.8.1 app/data, but the current ARM64 build produced no APK: the configured keystore path first referenced
-    the retired checkout, a process-temporary signer build ended at Gradle exit 1, and direct cached assemble timed out after
-    10 minutes. The scoped child process and temporary keystore were removed. No update install or UI-tree tap was performed,
-    because testing the old installed binary would not prove the new guidance flow. The final left-edge 44px mobile rail also
-    needs one fresh responsive matrix run after the three-attempt limit resets.
+64. Phase 13 Android guidance evidence covers SM-S928N/API 36 and Android Studio AVD API 35, not Hiby M500_MIKU. Hiby was not
+    present when the permitted AVD path was selected and appeared only after that matrix and AVD shutdown were complete.
+    Current signed ARM64/x86_64 APK build, verify/install, UI-tree-derived
+    touch, keyboard Enter/Escape focus restoration and process recreation passed without clearing app data. Android hardware
+    Back on the physical device followed Activity background/exit semantics instead of closing the open sheet; the explicit
+    Close/Escape flow restores focus. Separately, `test:responsive-layout` still fails at 390px: the left-edge vertical help/
+    diagnostic rail is clipped by 8px, while insetting or lowering it trades that failure for organizer-slot overlap or bottom
+    clipping. Experimental runtime changes were reverted after three attempts. Do not claim the complete device/responsive
+    matrix until a route-specific organizer placement passes the unchanged gate.

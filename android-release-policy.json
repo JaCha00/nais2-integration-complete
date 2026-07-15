@@ -15,5 +15,6 @@
     "certificateSha256": "6E20E7607AD38F1FC94619007BB3C59D19F088B23D91559A99EEAA7C6DE41A65"
   },
   "updateBaseline": null,
-  "firstReleaseForApplicationId": true
+  "firstReleaseForApplicationId": true,
+  "firstReleaseVersion": "2.8.1"
 }

@@ -615,9 +615,10 @@ battery와 metered upload를 소비하므로 UIDT visible notification, 15s conn
 
 Pairing은 one-use expiring capability로 public key만 등록하고 이후 모든 route가 authenticated signature를 요구한다.
 Exact signed duplicate는 stored response를 재사용하되 conflicting operation은 409, 새 stale sequence/nonce는 fixed denial,
-cancel은 tombstone을 먼저 commit하고 completion race가 확인되면 R2 final object를 삭제한다. Supabase, Marketplace,
+cancel은 tombstone을 먼저 commit하고 completion race가 확인되면 R2 final object를 삭제한다. 제거된 원격
 catalog/provider runtime은 재도입하지 않는다. Source/contract/build는 통과했지만 live pairing fixed denial과 실제 Android
 notification/byte checkpoint가 남아 capability는 false다.
+
 ## D-039 — NovelAI token display is fail-closed without reproducible tokenizer parity
 
 - Date: 2026-07-15
@@ -639,3 +640,18 @@ notification/byte checkpoint가 남아 capability는 false다.
 - Dependency/bundle/mobile impact: no dependency was added, so there is no license, bundle, or mobile runtime increase.
 - Revisit gate: add `estimated` or `exact` only after a model-versioned official artifact or golden service and checked-in,
   provenance-recorded fixtures demonstrate sufficient parity for the final expanded base plus character prompts.
+
+## D-040 — First-application-ID baseline absence does not relax release tags
+
+- Date: 2026-07-16
+- Decision: `android-release-policy.json` may set `updateBaseline` to `null` only when
+  `firstReleaseForApplicationId` is exactly `true` and immutable `firstReleaseVersion` equals the current package version.
+  This means there is no prior same-ID APK to compare for that one version; it does not remove the release ruleset. Release
+  validation still requires an exact stable `v<version>` tag, and every future update baseline must use stable
+  `v<major>.<minor>.<patch>` form with the repository's versionCode component bounds.
+- Implementation: release-version and APK verification share a small policy resolver. A null first-release baseline skips
+  only the newer-than-prior-APK comparison; malformed, unprefixed or contradictory policies fail closed. No signing,
+  package identity, versionCode, SDK, ABI, certificate or alignment check is bypassed.
+- Alternatives rejected: inventing a pre-existing baseline for the new application ID; treating null as an unchecked
+  verifier bypass; accepting unprefixed baseline versions that diverge from the repository's `v*` release ruleset.
+- Dependency/bundle/mobile impact: no dependency or runtime bundle code was added; the resolver is build/release tooling.

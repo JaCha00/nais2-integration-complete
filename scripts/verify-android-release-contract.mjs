@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { patchAndroidSigning } from './patch-android-signing.mjs'
+import { resolveAndroidUpdateBaseline } from './android-update-baseline.mjs'
 
 const root = process.cwd()
 const read = path => readFileSync(join(root, path), 'utf8')
@@ -19,6 +20,59 @@ assert.equal(policy.targetSdkVersion, 36)
 assert.match(policy.signing.certificateSha256, /^[A-F0-9]{64}$/)
 assert.equal(policy.updateBaseline, null)
 assert.equal(policy.firstReleaseForApplicationId, true)
+assert.equal(policy.firstReleaseVersion, pkg.version)
+assert.equal(resolveAndroidUpdateBaseline(policy, pkg.version), null)
+assert.throws(
+    () => resolveAndroidUpdateBaseline({ updateBaseline: null }, pkg.version),
+    /first release of an applicationId/,
+)
+assert.throws(
+    () =>
+        resolveAndroidUpdateBaseline(
+            {
+                updateBaseline: null,
+                firstReleaseForApplicationId: true,
+                firstReleaseVersion: pkg.version,
+            },
+            '2.8.2',
+        ),
+    /limited to firstReleaseVersion/,
+)
+assert.equal(
+    resolveAndroidUpdateBaseline({
+        updateBaseline: { tag: 'v2.8.0' },
+        firstReleaseForApplicationId: false,
+    }, pkg.version),
+    'v2.8.0',
+)
+assert.throws(
+    () =>
+        resolveAndroidUpdateBaseline({
+            updateBaseline: { tag: 'v2.8.0' },
+            firstReleaseForApplicationId: true,
+        }, pkg.version),
+    /requires firstReleaseForApplicationId to be false/,
+)
+assert.throws(
+    () =>
+        resolveAndroidUpdateBaseline({
+            updateBaseline: { tag: '2.8.0' },
+            firstReleaseForApplicationId: false,
+        }, pkg.version),
+    /stable v<major>\.<minor>\.<patch> form/,
+)
+assert.throws(
+    () => resolveAndroidUpdateBaseline({ updateBaseline: { tag: 'v2.8.0' } }, pkg.version),
+    /requires firstReleaseForApplicationId to be false/,
+)
+assert.throws(
+    () =>
+        resolveAndroidUpdateBaseline(
+            { updateBaseline: { tag: 'v2.1000.0' }, firstReleaseForApplicationId: false },
+            pkg.version,
+        ),
+    /outside the supported versionCode range/,
+)
 assert.ok(policy.signing.keyAlias)
 assert.deepEqual(policy.requiredAbis, ['arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'])
 assert.match(pkg.devDependencies.playwright, /^\d+\.\d+\.\d+$/)
@@ -37,6 +91,7 @@ assert.equal(pkg.scripts['test:android-debug'], 'node scripts/verify-android-apk
 
 for (const path of [
     'scripts/verify-release-version.mjs',
+    'scripts/android-update-baseline.mjs',
     'scripts/patch-android-signing.mjs',
     'scripts/prepare-android-release.mjs',
     'scripts/verify-android-apk.mjs',
@@ -119,6 +174,7 @@ for (const ignoredSecret of [
     'keystore.properties',
     '*.jks',
     '*.keystore',
+    '/keystore_base64.txt',
     '*.p12',
     '*.pfx',
     '.env.*',
