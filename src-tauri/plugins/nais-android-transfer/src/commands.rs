@@ -3,7 +3,7 @@ use tauri::{AppHandle, Runtime};
 use crate::{
     types::{
         validate_transfer_id, CheckpointArgs, RecoveryResult, ScheduleArgs, TransferIdArgs,
-        TransferStatus, TransferTicket,
+        CloudflarePairingArgs, CloudflarePairingStatus, TransferStatus, TransferTicket,
     },
     AndroidTransferExt, Result,
 };
@@ -65,6 +65,18 @@ pub async fn status<R: Runtime>(app: AppHandle<R>, transfer_id: String) -> Resul
 pub async fn recover<R: Runtime>(app: AppHandle<R>) -> Result<RecoveryResult> {
     app.android_transfer()
         .call("recover", serde_json::json!({}))
+}
+
+/// Pairing material is validated and forwarded once; Kotlin stores only the
+/// endpoint/device reference while Android Keystore owns the generated key.
+#[tauri::command]
+pub async fn configure_cloudflare<R: Runtime>(
+    app: AppHandle<R>,
+    configuration: CloudflarePairingArgs,
+) -> Result<CloudflarePairingStatus> {
+    configuration.validate()?;
+    app.android_transfer()
+        .call("configureCloudflare", configuration)
 }
 
 fn control<R: Runtime>(

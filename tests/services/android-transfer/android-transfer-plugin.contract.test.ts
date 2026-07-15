@@ -57,10 +57,10 @@ describe('Phase 12 Android transfer scheduling plugin contract', () => {
 
     it('uses UIDT on API 34+ and a foreground WorkManager fallback on API 24-33', async () => {
         const [scheduler, jobService, worker, notifications] = await Promise.all([
-            source('android/src/main/java/com/sunakgo/nais2/transfer/TransferScheduler.kt'),
-            source('android/src/main/java/com/sunakgo/nais2/transfer/NaisTransferJobService.kt'),
-            source('android/src/main/java/com/sunakgo/nais2/transfer/NaisTransferWorker.kt'),
-            source('android/src/main/java/com/sunakgo/nais2/transfer/TransferNotifications.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/TransferScheduler.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/NaisTransferJobService.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/NaisTransferWorker.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/TransferNotifications.kt'),
         ])
 
         expect(scheduler).toContain('Build.VERSION_CODES.UPSIDE_DOWN_CAKE')
@@ -74,6 +74,8 @@ describe('Phase 12 Android transfer scheduling plugin contract', () => {
         expect(worker).toContain('CoroutineWorker')
         expect(worker).toContain('setForeground(')
         expect(notifications).toContain('ACTION_PAUSE')
+        expect(notifications).toContain('ACTION_RESUME')
+        expect(notifications).toContain('ACTION_RETRY')
         expect(notifications).toContain('ACTION_CANCEL')
 
         const combined = `${scheduler}\n${jobService}\n${worker}`
@@ -84,10 +86,10 @@ describe('Phase 12 Android transfer scheduling plugin contract', () => {
         const [rustTypes, rustCommands, kotlinModel, repository, validator, plugin] = await Promise.all([
             source('src/types.rs'),
             source('src/commands.rs'),
-            source('android/src/main/java/com/sunakgo/nais2/transfer/TransferTicket.kt'),
-            source('android/src/main/java/com/sunakgo/nais2/transfer/TransferTicketStore.kt'),
-            source('android/src/main/java/com/sunakgo/nais2/transfer/TransferTicketValidator.kt'),
-            source('android/src/main/java/com/sunakgo/nais2/transfer/AndroidTransferPlugin.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/TransferTicket.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/TransferTicketStore.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/TransferTicketValidator.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/AndroidTransferPlugin.kt'),
         ])
 
         expect(rustTypes).toContain('#[serde(deny_unknown_fields)]')
@@ -120,11 +122,11 @@ describe('Phase 12 Android transfer scheduling plugin contract', () => {
 
     it('keeps explicit single-owner guards across UIDT recovery and WorkManager', async () => {
         const [scheduler, worker, repository, plugin, execution, manifest] = await Promise.all([
-            source('android/src/main/java/com/sunakgo/nais2/transfer/TransferScheduler.kt'),
-            source('android/src/main/java/com/sunakgo/nais2/transfer/NaisTransferWorker.kt'),
-            source('android/src/main/java/com/sunakgo/nais2/transfer/TransferTicketStore.kt'),
-            source('android/src/main/java/com/sunakgo/nais2/transfer/AndroidTransferPlugin.kt'),
-            source('android/src/main/java/com/sunakgo/nais2/transfer/TransferExecution.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/TransferScheduler.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/NaisTransferWorker.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/TransferTicketStore.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/AndroidTransferPlugin.kt'),
+            source('android/src/main/java/com/bluhair/naisblue/transfer/TransferExecution.kt'),
             source('android/src/main/AndroidManifest.xml'),
         ])
 

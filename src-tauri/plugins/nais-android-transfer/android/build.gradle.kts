@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.sunakgo.nais2.transfer"
+    namespace = "com.bluhair.naisblue.transfer"
     compileSdk = 36
 
     defaultConfig {

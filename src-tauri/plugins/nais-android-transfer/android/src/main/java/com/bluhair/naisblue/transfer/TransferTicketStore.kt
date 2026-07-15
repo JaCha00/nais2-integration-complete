@@ -1,4 +1,4 @@
-package com.sunakgo.nais2.transfer
+package com.bluhair.naisblue.transfer
 
 import android.content.Context
 import android.content.SharedPreferences
@@ -33,6 +33,7 @@ class TransferTicketStore(context: Context) {
             .putString(key(ticket.transferId, FIELD_DIGEST), ticket.contentSha256)
             .putLong(key(ticket.transferId, FIELD_SIZE), ticket.sizeBytes)
             .putBoolean(key(ticket.transferId, FIELD_USER_STARTED), ticket.userInitiated)
+            .putBoolean(key(ticket.transferId, FIELD_REMOTE_CANCEL_PENDING), false)
         writeStatus(
             editor,
             TransferStatus(
@@ -71,7 +72,12 @@ class TransferTicketStore(context: Context) {
     }
 
     fun cancel(transferId: String): TransferStatus = transition(transferId) { current ->
-        if (current.state in TERMINAL_STATES) current else current.copy(state = TransferState.CANCELLED)
+        if (current.state in TERMINAL_STATES) current else {
+            preferences.edit()
+                .putBoolean(key(transferId, FIELD_REMOTE_CANCEL_PENDING), true)
+                .commit()
+            current.copy(state = TransferState.CANCELLED)
+        }
     }
 
     fun retry(transferId: String): TransferStatus = transition(transferId) { current ->
@@ -155,6 +161,22 @@ class TransferTicketStore(context: Context) {
             val state = readStatus(transferId)?.state ?: return@mapNotNull null
             if (state in setOf(TransferState.QUEUED, TransferState.RETRY)) readTicket(transferId) else null
         }
+    }
+
+    fun pendingRemoteCancellations(): List<TransferTicketSnapshot> = synchronized(LOCK) {
+        allIds().sorted().mapNotNull { transferId ->
+            if (preferences.getBoolean(key(transferId, FIELD_REMOTE_CANCEL_PENDING), false)) {
+                readTicket(transferId)
+            } else {
+                null
+            }
+        }
+    }
+
+    fun markRemoteCancelDelivered(transferId: String) = synchronized(LOCK) {
+        require(preferences.edit()
+            .putBoolean(key(transferId, FIELD_REMOTE_CANCEL_PENDING), false)
+            .commit()) { "Transfer cancel receipt commit failed" }
     }
 
     private fun transition(
@@ -242,6 +264,7 @@ class TransferTicketStore(context: Context) {
         private const val FIELD_DIGEST = "digest"
         private const val FIELD_SIZE = "size"
         private const val FIELD_USER_STARTED = "user_started"
+        private const val FIELD_REMOTE_CANCEL_PENDING = "remote_cancel_pending"
         private const val FIELD_STATE = "state"
         private const val FIELD_CHECKPOINT = "checkpoint"
         private const val FIELD_ATTEMPT = "attempt"

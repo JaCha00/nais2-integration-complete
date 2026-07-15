@@ -1,4 +1,4 @@
-package com.sunakgo.nais2.transfer
+package com.bluhair.naisblue.transfer
 
 import android.app.job.JobInfo
 import android.app.job.JobScheduler

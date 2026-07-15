@@ -1,4 +1,4 @@
-package com.sunakgo.nais2.transfer
+package com.bluhair.naisblue.transfer
 
 import android.content.Context
 import androidx.work.CoroutineWorker
@@ -16,6 +16,7 @@ class NaisTransferWorker(
     private val transferId = inputData.getString(TransferScheduler.EXTRA_TRANSFER_ID)
 
     override suspend fun doWork(): Result {
+        TransferExecutionRegistry.installIfAbsent(CloudflareTransferExecutor(applicationContext))
         val id = transferId ?: return Result.failure()
         val store = TransferTicketStore(applicationContext)
         return try {

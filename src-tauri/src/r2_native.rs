@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const R2_CREDENTIAL_SERVICE: &str = "com.sunakgo.nais2.r2";
+const R2_CREDENTIAL_SERVICE: &str = "com.bluhair.naisblue.r2";
 const R2_HASH_METADATA_KEY: &str = "nais2-sha256";
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -7,6 +7,7 @@ const COMMANDS: &[&str] = &[
     "checkpoint",
     "status",
     "recover",
+    "configure_cloudflare",
 ];
 
 fn main() {

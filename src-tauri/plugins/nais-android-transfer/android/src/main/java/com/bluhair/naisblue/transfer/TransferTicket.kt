@@ -1,4 +1,4 @@
-package com.sunakgo.nais2.transfer
+package com.bluhair.naisblue.transfer
 
 import app.tauri.annotation.InvokeArg
 import app.tauri.plugin.JSObject
@@ -109,4 +109,24 @@ class TransferIdArgs {
 class CheckpointArgs {
     lateinit var transferId: String
     var checkpointBytes: Long = 0
+}
+
+@InvokeArg
+class CloudflarePairingArgs {
+    lateinit var credentialRef: String
+    lateinit var endpoint: String
+    lateinit var deviceId: String
+    lateinit var pairingCapability: String
+}
+
+data class CloudflarePairingStatus(
+    val credentialRef: String,
+    val deviceId: String,
+    val configured: Boolean,
+) {
+    fun toJs(): JSObject = JSObject().apply {
+        put("credentialRef", credentialRef)
+        put("deviceId", deviceId)
+        put("configured", configured)
+    }
 }

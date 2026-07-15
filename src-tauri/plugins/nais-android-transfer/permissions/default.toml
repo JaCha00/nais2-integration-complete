@@ -9,4 +9,5 @@ permissions = [
   "allow-checkpoint",
   "allow-status",
   "allow-recover",
+  "allow-configure-cloudflare",
 ]

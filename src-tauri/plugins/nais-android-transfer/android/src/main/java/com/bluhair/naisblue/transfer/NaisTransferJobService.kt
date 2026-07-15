@@ -1,4 +1,4 @@
-package com.sunakgo.nais2.transfer
+package com.bluhair.naisblue.transfer
 
 import android.app.job.JobParameters
 import android.app.job.JobService
@@ -23,6 +23,7 @@ class NaisTransferJobService : JobService() {
     private val jobs = ConcurrentHashMap<String, Job>()
 
     override fun onStartJob(params: JobParameters): Boolean {
+        TransferExecutionRegistry.installIfAbsent(CloudflareTransferExecutor(this))
         val transferId = params.extras.getString(TransferScheduler.EXTRA_TRANSFER_ID)
             ?: return false
         val store = TransferTicketStore(this)

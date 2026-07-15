@@ -1,4 +1,4 @@
-package com.sunakgo.nais2.transfer
+package com.bluhair.naisblue.transfer
 
 /**
  * This validator mirrors the Rust boundary before SharedPreferences is touched.

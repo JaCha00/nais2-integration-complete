@@ -282,7 +282,7 @@ comparison/integration이다. `tests/fixtures/README.md`에 따라 Phase 01 이�
 | Android init/signing patch | 0 | generated debug project | PASS |
 | first Android x86_64 debug build | 1 | Rust cross-build | standalone Rust PATH가 rustup target sysroot를 보지 못한 environment failure |
 | rustup-shim Android x86_64 debug build | 0 | 1 universal debug APK | PASS; source 변경 없이 PATH precedence만 교정 |
-| `npm run test:android-debug -- --apk ...` | 0 | 1 APK | package `com.sunakgo.nais2.dev`, v2.8.1, minSdk 24, targetSdk 36, x86_64 verified |
+| `npm run test:android-debug -- --apk ...` | 0 | 1 APK | retired development package ID, v2.8.1, minSdk 24, targetSdk 36, x86_64 verified |
 
 ### Artifacts and gaps
 
@@ -643,7 +643,7 @@ import regex 1건이 실패했고 계약/fixture를 고친 뒤 final pass했다.
 | WSL+NDK libsodium prebuild attempt 2 | 1 | install step | static library 생성 성공 후 dependency-file path 때문에 `make install`만 실패 |
 | first `SODIUM_LIB_DIR` link | 1 | native link | crate host cfg가 `liblibsodium.a` 이름을 요구함을 확인 |
 | final process-local static link + Android build | 0 | 1 universal debug APK | Stronghold/libsodium/NAIS2 x86_64 Rust와 Gradle APK PASS; tracked binary 없음 |
-| `npm run test:android-debug -- --apk ...` | 0 | 1 APK | package `com.sunakgo.nais2.dev`, v2.8.1, minSdk 24, targetSdk 36, x86_64 verified |
+| `npm run test:android-debug -- --apk ...` | 0 | 1 APK | retired development package ID, v2.8.1, minSdk 24, targetSdk 36, x86_64 verified |
 | emulator vault UI/lifecycle | 0 | create → unlocked → lock | Android API 35; privacy warning, password input, two slots, encrypted snapshot names와 final locked state 확인 |
 
 Android emulator QA는 installed debug user data를 보존하고 `pm clear`를 실행하지 않았다.
@@ -792,7 +792,7 @@ repository schema는 변경하지 않았다.
 | `rustfmt --edition 2021 --check src-tauri/src/nai_transport.rs` | 0 | new Rust source | PASS |
 | first repository-wide `cargo fmt --check` | 1 | existing Rust files + initial new file | 새 파일 formatting은 교정해 독립 check 0; pre-existing `build.rs`, `lib.rs`, `main.rs`는 broad unrelated reformat하지 않음 |
 | final Android x86_64 debug build | 0 | 1 universal debug APK | process-local generated libsodium link; tracked binary/dependency 없음 |
-| `npm run test:android-debug -- --apk ...` | 0 | 1 APK | package `com.sunakgo.nais2.dev`, v2.8.1, minSdk 24, targetSdk 36, x86_64 PASS |
+| `npm run test:android-debug -- --apk ...` | 0 | 1 APK | retired development package ID, v2.8.1, minSdk 24, targetSdk 36, x86_64 PASS |
 | final emulator install/start/Scene route | 0 | API 35 x86_64 | `install -r`, Main foreground, UI-tree Scene route, run/force-stop crash buffer empty |
 | `git diff --check` | 0 | worktree diff | whitespace error 없음; line-ending warnings only |
 
@@ -2275,7 +2275,7 @@ process kill/relaunch를 실행하지 않았다. Offline `emulator-5566`은 evid
 | Command/evidence | Exit | Result |
 | --- | ---: | --- |
 | `npx tauri android build --debug --target aarch64 --split-per-abi --apk --ci -vv` | 0 | first attempt; Kotlin/Gradle `BUILD SUCCESSFUL`; tracked transfer plugin compile 포함 |
-| APK metadata/signature/alignment | 0 | `com.sunakgo.nais2.dev`, 2.8.1, minSdk 24, targetSdk 36, `arm64-v8a` only |
+| APK metadata/signature/alignment | 0 | retired development package ID, 2.8.1, minSdk 24, targetSdk 36, `arm64-v8a` only |
 | APK install/cold launch on `R3CX902QFGM` | 0 | overwrite install, launch status OK, stable PID |
 | force-stop/relaunch | 0 | API 36 `topResumedActivity`, new PID, app crash signature 0 |
 | APK manifest/content | 0 | UIDT JobService, BIND_JOB_SERVICE, notification receiver, WorkManager foreground service 포함 |
@@ -2336,3 +2336,51 @@ active JOB/Service block과 `userInitiatedApproved=true`, cancel state, cancel �
   commit and never track/delete generated `.tauri`, target or Android app data
 - Next phase readiness: BLOCKED — Kotlin/Gradle/APK and approved ARM64/API 36 device startup gates pass, but executor-backed
   notification/cancel/checkpoint/byte transfer and production mobile sync gates do not.
+
+## Phase 12 continuation — final Android identity/signing and Cloudflare executor
+
+Date: 2026-07-15 (Asia/Seoul)
+Base HEAD: `a56a540b1f59a2e1181733d2b1448839341a28a9`
+
+Tracked Android identity authorities now use `com.bluhair.naisblue`; release and debug share the identity and user-owned signer.
+The ignored Android project was regenerated from Tauri, then the tracked Gradle patch used a process-scoped OS-temp keystore copy.
+Keytool characterized the `.env` alias as stale and the sole verified alias as `release`; passwords, keystore path and bytes were not
+written to tracked files or logs. Existing apps/data were not uninstalled or cleared.
+
+Cloudflare Worker + SQLite Durable Object + R2 `prime/nais` source was added with Android Keystore ECDSA pairing/request signing,
+sequence/nonce/replay, signed idempotent duplicate, tombstone/no-late-commit, bounded 2 MiB JSON/5 MiB part, timeout/retry and
+checkpoint-after-R2-ack contracts. The Android executor is installed in UI, UIDT, WorkManager and notification process recovery;
+pause/resume/retry/cancel notification actions and pending remote cancel persistence are tracked. Supabase/Marketplace/catalog runtime
+was not added. Wrangler deployed the Worker and created `prime/nais/.keep`, but live pairing returned fixed 403 after three bounded
+secret-delivery attempts; no device byte transfer was run and capabilities remain false.
+
+### Verification
+
+| Gate | Exit | Evidence |
+| --- | ---: | --- |
+| stale tracked development ID scan | 0 | 0 occurrences |
+| Worker TypeScript + contract | 0 | 1 file, 3/3 |
+| Android transfer contract | 0 | 1 file, 5/5 |
+| sync/R2 categories | 0 | sync 14 files/180; R2 4 files/18 |
+| credential/redaction/characterization | 0 | credential 5 files/20; redaction 2 files/13; characterization 7 files/50 |
+| `npm run lint` / `npm run build` | 0 / 0 | ESLint clean; Vite 2,399 modules |
+| full `npm run test:composition` | 0 | 124 passed/1 skipped files; 963 passed/3 skipped tests |
+| Rust sync transport / Android plugin | 0 / 0 | 14/14 TLS/replay/revoke; 3/3 plugin |
+| ARM64 debug/release APK | 0 / 0 | final package ID, user signer SHA-256 `6E20E760…41A65` |
+| SM-S928N install/cold launch | 0 | API 36, arm64-v8a, new package install; no uninstall/data clear |
+| debug QA boundary | 0 | DUMP-protected receiver present only in debug; Android Keystore public key generated |
+| artifact credential/material scan | 0 | env value hits 0; Authorization/signed URL/prompt/image markers 0 |
+| live Worker deploy / R2 prefix | 0 / 0 | deployed; `prime/nais/.keep` created without touching `ent` |
+| live paired transfer | 1 | pairing fixed 403 after three attempts; stopped per validation limit |
+
+### HANDOFF REPORT
+
+- Phase: 12 — final application identity/signing + Cloudflare executor continuation
+- Resulting local commit: `SELF` (resolve with `git rev-parse HEAD`)
+- Behavior: final-ID signed APKs, paired Cloudflare protocol/executor source, headless recovery and notification control wiring
+- External state: Worker deployed and R2 `nais` prefix sentinel created; secrets remain Cloudflare-managed, not tracked
+- Preserved: false capability gates, LAN/mTLS and Phase 11 contracts, app/user/vault/sync data, `ent` R2 prefix
+- Not completed: live pairing, executor-backed notification/bytes/checkpoint/process-death resume; Phase 12 remains BLOCKED
+- Rollback: revert only this commit, preserve app data/R2 objects/DO state and user keystore; do not uninstall or clear data
+- Next session: diagnose only the Worker pairing verifier/secret-version boundary, rotate one-use pairing secret, then execute the
+  existing debug QA boundary on SM-S928N for notification pause/resume/retry/cancel, checkpoint recovery and no-late-commit.

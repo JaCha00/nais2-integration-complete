@@ -1,4 +1,4 @@
-package com.sunakgo.nais2.transfer
+package com.bluhair.naisblue.transfer
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -16,8 +16,10 @@ import kotlin.math.roundToInt
  * display counters only; opaque references and content never enter UI extras.
  */
 object TransferNotifications {
-    const val ACTION_PAUSE = "com.sunakgo.nais2.transfer.PAUSE"
-    const val ACTION_CANCEL = "com.sunakgo.nais2.transfer.CANCEL"
+    const val ACTION_PAUSE = "com.bluhair.naisblue.transfer.PAUSE"
+    const val ACTION_RESUME = "com.bluhair.naisblue.transfer.RESUME"
+    const val ACTION_RETRY = "com.bluhair.naisblue.transfer.RETRY"
+    const val ACTION_CANCEL = "com.bluhair.naisblue.transfer.CANCEL"
     const val EXTRA_TRANSFER_ID = "transfer_id"
     private const val CHANNEL_ID = "nais_large_transfers"
 
@@ -38,20 +40,40 @@ object TransferNotifications {
             .setOngoing(status.state !in setOf(TransferState.CANCELLED, TransferState.SUCCEEDED, TransferState.FAILED))
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_PROGRESS)
-            .addAction(
+
+        when (status.state) {
+            TransferState.PAUSED -> builder.addAction(
+                Notification.Action.Builder(
+                    android.R.drawable.ic_media_play,
+                    "Resume",
+                    action(context, status.transferId, ACTION_RESUME, 1),
+                ).build(),
+            )
+            TransferState.RETRY, TransferState.BLOCKED, TransferState.FAILED -> builder.addAction(
+                Notification.Action.Builder(
+                    android.R.drawable.ic_popup_sync,
+                    "Retry",
+                    action(context, status.transferId, ACTION_RETRY, 1),
+                ).build(),
+            )
+            TransferState.QUEUED, TransferState.RUNNING -> builder.addAction(
                 Notification.Action.Builder(
                     android.R.drawable.ic_media_pause,
                     "Pause",
                     action(context, status.transferId, ACTION_PAUSE, 1),
                 ).build(),
             )
-            .addAction(
+            else -> Unit
+        }
+        if (status.state !in setOf(TransferState.CANCELLED, TransferState.SUCCEEDED)) {
+            builder.addAction(
                 Notification.Action.Builder(
                     android.R.drawable.ic_menu_close_clear_cancel,
                     "Cancel",
                     action(context, status.transferId, ACTION_CANCEL, 2),
                 ).build(),
             )
+        }
 
         context.packageManager.getLaunchIntentForPackage(context.packageName)?.let { launchIntent ->
             builder.setContentIntent(

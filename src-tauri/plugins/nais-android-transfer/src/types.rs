@@ -105,7 +105,7 @@ pub struct RecoveryResult {
     pub statuses: Vec<TransferStatus>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ScheduleArgs {
     pub ticket: TransferTicket,
@@ -122,6 +122,51 @@ pub(crate) struct TransferIdArgs {
 pub(crate) struct CheckpointArgs {
     pub transfer_id: String,
     pub checkpoint_bytes: u64,
+}
+
+/// The pairing capability is transient command input. It is never part of a
+/// durable transfer ticket, status, checkpoint, diagnostic, or command result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudflarePairingArgs {
+    pub credential_ref: String,
+    pub endpoint: String,
+    pub device_id: String,
+    pub pairing_capability: String,
+}
+
+impl CloudflarePairingArgs {
+    pub fn validate(&self) -> Result<()> {
+        let endpoint = url::Url::parse(&self.endpoint).map_err(|_| Error::invalid())?;
+        if !safe_reference(&self.credential_ref, "vault:", 160)
+            || endpoint.scheme() != "https"
+            || endpoint.host_str().is_none()
+            || endpoint.username() != ""
+            || endpoint.password().is_some()
+            || endpoint.query().is_some()
+            || endpoint.fragment().is_some()
+            || !matches!(endpoint.path(), "" | "/")
+            || !safe_identifier(&self.device_id, 96)
+            || self.device_id.len() < 8
+            || self.pairing_capability.len() < 32
+            || self.pairing_capability.len() > 128
+            || !self
+                .pairing_capability
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+        {
+            return Err(Error::invalid());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudflarePairingStatus {
+    pub credential_ref: String,
+    pub device_id: String,
+    pub configured: bool,
 }
 
 pub(crate) fn validate_transfer_id(value: &str) -> Result<()> {

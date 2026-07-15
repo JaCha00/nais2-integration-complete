@@ -582,3 +582,39 @@ process-local `SODIUM_LIB_DIR`로 지정해 tracked Kotlin plugin과 WorkManager
 통과했다. APK는 `arm64-v8a` 단일 ABI, 231,398,209 bytes였고 Samsung SM-S928N/API 36 install/start/restart도
 통과했다. 이는 Kotlin/Gradle/APK compatibility와 R-025 workaround를 검증하지만 WorkManager만의 isolated size
 delta, actual executor, notification action 또는 byte transfer 성공 근거는 아니므로 capability gate는 바꾸지 않는다.
+## D-037 — 최종 Android identity와 artifact signing은 request signing에서 분리한다
+
+상태: Accepted
+
+Release/debug application ID는 `com.bluhair.naisblue` 하나로 고정하고 tracked Tauri identifier와 release policy를
+authority로 삼아 ignored Android project를 재생성한다. 새 ID의 첫 release이므로 retired package update baseline은
+없고 기존 앱 삭제나 app-data clear를 하지 않는다. User-owned APK keystore는 OS 임시 복사와 process environment로만
+Gradle에 전달하며 tracked file/log에는 path, alias password 또는 key bytes를 쓰지 않는다. `.env` alias 불일치는
+keytool로 확인한 유일 alias `release`를 우선하고 정책에 기록한다.
+
+APK signer는 배포 artifact identity만 보증한다. Cloudflare request는 Android Keystore의 non-exportable P-256 device
+key가 sequence/nonce/timestamp/idempotency/body digest를 ECDSA 서명하며, Worker pairing capability와 Cloudflare CLI
+credential은 APK keystore와 공유하지 않는다. 이 분리는 APK key 노출이 remote device identity가 되거나 그 반대가
+되는 결합을 막는다.
+
+## D-038 — mobile R2 executor는 Worker + SQLite Durable Object + R2로 구성한다
+
+상태: Accepted (live Android gate pending)
+
+Cloudflare Worker는 paired request 검증과 bounded routing, SQLite Durable Object는 device별 sequence/nonce replay fence,
+idempotency result, sanitized job/checkpoint/tombstone metadata의 serialized authority, R2 `prime` bucket의 `nais/` prefix는
+multipart bytes authority를 맡는다. D1은 per-device coordination에 별도 transaction/routing 계층을 더하므로 선택하지
+않았고, Durable Object의 single-threaded coordination과 strongly consistent storage가 cancel/no-late-commit race에 더
+직접 맞는다. Image bytes, prompt, token, Authorization, signed URL과 local path는 DO/JSON에 저장하지 않는다.
+
+Dependencies는 dev-only `wrangler=4.110.0`, `@cloudflare/workers-types=5.20260715.1`과 기존 Android Web/crypto API다.
+별도 mobile Cloudflare SDK는 추가하지 않았다. Worker Paid plan은 최소 월 비용이 있고 Worker request/CPU, Durable Object
+request/storage, R2 Class A/B/storage 사용량이 증가한다. R2 internet egress는 무료지만 5 MiB part는 mobile radio wake,
+battery와 metered upload를 소비하므로 UIDT visible notification, 15s connect/60s read timeout, bounded retry/checkpoint를
+유지한다. 공식 근거는 Cloudflare Durable Objects, R2 multipart, Workers pricing 문서를 따른다.
+
+Pairing은 one-use expiring capability로 public key만 등록하고 이후 모든 route가 authenticated signature를 요구한다.
+Exact signed duplicate는 stored response를 재사용하되 conflicting operation은 409, 새 stale sequence/nonce는 fixed denial,
+cancel은 tombstone을 먼저 commit하고 completion race가 확인되면 R2 final object를 삭제한다. Supabase, Marketplace,
+catalog/provider runtime은 재도입하지 않는다. Source/contract/build는 통과했지만 live pairing fixed denial과 실제 Android
+notification/byte checkpoint가 남아 capability는 false다.

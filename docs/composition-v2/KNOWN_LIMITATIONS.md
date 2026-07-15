@@ -181,15 +181,14 @@
     atomic commit과 interruption recovery는 구현·연결되지 않아 capability가 disabled다. 현재 image sync의 유일한
     기본 경로는 succeeded R2 object reference이며 missing object는 typed failure로 끝나고 JSON image fallback은 없다.
 59. Android tracked transfer plugin은 API 34+ UIDT와 API 24–33 foreground WorkManager scheduling,
-    notification pause/cancel/retry와 secret-free ticket/checkpoint lifecycle을 제공한다. 그러나
-    `TransferExecutionRegistry`에 process-safe R2/LAN executor가 없어 실행은
-    `E_TRANSFER_EXECUTOR_UNAVAILABLE`로 blocked된다. 따라서 `r2ForegroundUpload`,
-    `r2BackgroundUpload`와 large-LAN capability는 false이며 실제 byte transfer를 완료하지 않는다.
+    notification pause/resume/cancel/retry와 secret-free ticket/checkpoint lifecycle을 제공한다. Cloudflare R2
+    executor는 registry에 연결됐지만 LAN은 unsupported이고 live pairing/physical byte evidence가 없어
+    `r2ForegroundUpload`, `r2BackgroundUpload`와 large-LAN capability는 계속 false다.
 60. Samsung SM-S928N `arm64-v8a`/API 36에서 tracked Kotlin plugin을 포함한 debug APK build, metadata/install,
     cold launch, process recreation, synthetic secret-free UIDT registration/cancel과 cancelled-state restart persistence는
     통과했다. Notification permission은 system UI tree로 임시 허용하고 원래 denied 상태로 복원했다. 그러나
-    integrated R2/LAN executor가 없어 UIDT는 queued에서 실제 byte execution으로 진행하지 않았고 notification
-    pause/resume/cancel action과 checkpoint 증가도 관찰하지 못했다. M500_MIKU의 R-027도 별도로 남으므로 이 부분을
+    final-ID user-signed debug APK install/cold launch는 재검증했다. 그러나 deployed Worker의 one-use pairing이 fixed
+    403으로 거부돼 notification pause/resume/cancel action과 checkpoint 증가를 관찰하지 못했다. M500_MIKU의 R-027도 별도로 남으므로 이 부분을
     physical foreground transfer 완료 근거로 바꾸거나 privileged service grant/data clear로 보완하지 않는다.
 61. Relay는 `RelayTransport` interface와 authenticated/replay-aware local fake server contract뿐이다. Production
     endpoint, provider credential, removed catalog/provider client, OAuth/deep-link와 relay failover는 없으며

@@ -1,4 +1,4 @@
-package com.sunakgo.nais2.transfer
+package com.bluhair.naisblue.transfer
 
 import android.app.Activity
 import android.webkit.WebView
@@ -8,6 +8,10 @@ import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSArray
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * The Tauri plugin connects validated UI commands to durable scheduling only.
@@ -17,6 +21,7 @@ import app.tauri.plugin.Plugin
 class AndroidTransferPlugin(private val activity: Activity) : Plugin(activity) {
     private val store = TransferTicketStore(activity)
     private val scheduler = TransferScheduler(activity)
+    private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Command
     fun schedule(invoke: Invoke) = respond(invoke) {
@@ -47,9 +52,11 @@ class AndroidTransferPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun cancel(invoke: Invoke) = control(invoke) { transferId ->
+        val ticket = store.ticket(transferId)
         val status = store.cancel(transferId)
         scheduler.cancel(transferId)
         TransferNotifications.cancel(activity, transferId)
+        sendRemoteCancel(ticket)
         status
     }
 
@@ -82,8 +89,28 @@ class AndroidTransferPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
+    @Command
+    fun configureCloudflare(invoke: Invoke) {
+        val args = try {
+            invoke.parseArgs(CloudflarePairingArgs::class.java)
+        } catch (_: RuntimeException) {
+            invoke.reject("Cloudflare pairing rejected", "E_TRANSFER_INVALID")
+            return
+        }
+        backgroundScope.launch {
+            try {
+                invoke.resolve(CloudflarePairingClient(activity).configure(args).toJs())
+            } catch (_: IllegalArgumentException) {
+                invoke.reject("Cloudflare pairing rejected", "E_TRANSFER_INVALID")
+            } catch (_: RuntimeException) {
+                invoke.reject("Cloudflare pairing failed", "E_TRANSFER_PAIRING")
+            }
+        }
+    }
+
     override fun load(webView: WebView) {
         super.load(webView)
+        TransferExecutionRegistry.installIfAbsent(CloudflareTransferExecutor(activity))
         // Recovery may run after background process recreation, so it never claims
         // a fresh UI gesture and therefore does not schedule a UIDT implicitly.
         try {
@@ -95,8 +122,17 @@ class AndroidTransferPlugin(private val activity: Activity) : Plugin(activity) {
 
     private fun recoverTransfers() {
         store.recoverInterrupted()
+        store.pendingRemoteCancellations().forEach(::sendRemoteCancel)
         store.recoverableTickets().forEach { ticket ->
             scheduler.schedule(ticket, allowUserInitiatedJob = false)
+        }
+    }
+
+    private fun sendRemoteCancel(ticket: TransferTicketSnapshot) {
+        backgroundScope.launch {
+            if (TransferExecutionRegistry.cancel(ticket) == TransferOutcome.Succeeded) {
+                store.markRemoteCancelDelivered(ticket.transferId)
+            }
         }
     }
 

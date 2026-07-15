@@ -12,6 +12,7 @@ Allows the NAIS UI to control bounded Android R2 and paired-LAN transfers.
 - `allow-checkpoint`
 - `allow-status`
 - `allow-recover`
+- `allow-configure-cloudflare`
 
 ## Permission Table
 
@@ -70,6 +71,32 @@ Enables the checkpoint command without any pre-configured scope.
 <td>
 
 Denies the checkpoint command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`nais-android-transfer:allow-configure-cloudflare`
+
+</td>
+<td>
+
+Enables the configure_cloudflare command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`nais-android-transfer:deny-configure-cloudflare`
+
+</td>
+<td>
+
+Denies the configure_cloudflare command without any pre-configured scope.
 
 </td>
 </tr>

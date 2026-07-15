@@ -13,13 +13,12 @@ const tauri = JSON.parse(read('src-tauri/tauri.conf.json'))
 const android = JSON.parse(read('src-tauri/tauri.android.conf.json'))
 
 assert.equal(policy.applicationId, tauri.identifier)
-assert.equal(policy.debugApplicationIdSuffix, '.dev')
+assert.equal(policy.debugApplicationIdSuffix, '')
 assert.equal(policy.minSdkVersion, android.bundle.android.minSdkVersion)
 assert.equal(policy.targetSdkVersion, 36)
 assert.match(policy.signing.certificateSha256, /^[A-F0-9]{64}$/)
-assert.match(policy.updateBaseline.sha256, /^[A-F0-9]{64}$/)
-assert.equal(policy.updateBaseline.tag, 'v2.8.0')
-assert.match(policy.updateBaseline.url, /\/v2\.8\.0\/NAIS2_2\.8\.0-universal\.apk$/)
+assert.equal(policy.updateBaseline, null)
+assert.equal(policy.firstReleaseForApplicationId, true)
 assert.ok(policy.signing.keyAlias)
 assert.deepEqual(policy.requiredAbis, ['arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'])
 assert.match(pkg.devDependencies.playwright, /^\d+\.\d+\.\d+$/)
@@ -65,8 +64,6 @@ for (const requiredText of [
     'contents: write',
     'outputs/apk/universal/debug/app-universal-debug.apk',
     'android-release-policy.json',
-    'updateBaseline.url',
-    'updateBaseline.sha256',
     'npm run test:responsive-layout',
     'playwright install --with-deps chromium',
     'verify_or_upload',
@@ -77,11 +74,8 @@ assert.ok(
     workflow.indexOf('Remove signing material') < workflow.indexOf('signed-install:'),
     'Signing material must be removed before the no-secret emulator job starts',
 )
-assert.ok(
-    workflow.indexOf('NAIS2_2.8.0-baseline.apk') <
-        workflow.lastIndexOf('npm run test:android-release'),
-    'The pinned baseline must be installed before the current release APK',
-)
+assert.ok(!workflow.includes('Download pinned update baseline'))
+assert.ok(!workflow.includes('NAIS2_2.8.0-baseline.apk'))
 
 const desktopWorkflow = read('.github/workflows/build.yml')
 for (const requiredText of [
@@ -175,8 +169,8 @@ android {
     assert.equal((twice.match(/NAIS_ANDROID_SIGNING_START/g) ?? []).length, 1)
     assert.equal((twice.match(/NAIS_ANDROID_SIGNING_CONFIG/g) ?? []).length, 1)
     assert.equal((twice.match(/NAIS_ANDROID_DEBUG_ID/g) ?? []).length, 1)
-    assert.match(twice, /naisReleaseSigningConfig\?\.let \{ signingConfig = it \}/)
-    assert.match(twice, /applicationIdSuffix = "\.dev"/)
+    assert.equal((twice.match(/naisUserSigningConfig\?\.let \{ signingConfig = it \}/g) ?? []).length, 2)
+    assert.doesNotMatch(twice, /applicationIdSuffix\s*=/)
 } finally {
     rmSync(temporaryRoot, { recursive: true, force: true })
 }

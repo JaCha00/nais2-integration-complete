@@ -1,17 +1,20 @@
-package com.sunakgo.nais2.transfer
+package com.bluhair.naisblue.transfer
 
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * The scheduler depends on this narrow executor seam; R2 and paired-LAN code
- * can later install an implementation without changing lifecycle contracts.
- * Until then every ticket becomes visibly blocked instead of reporting success.
+ * The scheduler depends on this narrow executor seam. The Cloudflare R2
+ * implementation installs in UI and headless processes while unsupported LAN
+ * tickets remain visibly blocked instead of reporting success.
  */
 interface TransferExecutor {
     suspend fun execute(
         ticket: TransferTicketSnapshot,
         reportCheckpoint: suspend (Long) -> Unit,
     ): TransferOutcome
+
+    /** Remote cancellation commits a tombstone independently of local work cancellation. */
+    suspend fun cancel(ticket: TransferTicketSnapshot): TransferOutcome
 }
 
 sealed interface TransferOutcome {
@@ -29,6 +32,16 @@ object TransferExecutionRegistry {
     fun install(value: TransferExecutor) {
         executor = value
     }
+
+    /** Headless JobService/WorkManager startup installs the same executor once. */
+    fun installIfAbsent(value: TransferExecutor) {
+        if (executor == null) synchronized(this) {
+            if (executor == null) executor = value
+        }
+    }
+
+    internal suspend fun cancel(ticket: TransferTicketSnapshot): TransferOutcome =
+        executor?.cancel(ticket) ?: TransferOutcome.Blocked(ERROR_EXECUTOR_UNAVAILABLE)
 
     internal suspend fun execute(
         ticket: TransferTicketSnapshot,

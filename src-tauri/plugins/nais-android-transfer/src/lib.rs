@@ -11,7 +11,7 @@ pub mod types;
 pub use error::{Error, Result};
 
 #[cfg(target_os = "android")]
-const PLUGIN_IDENTIFIER: &str = "com.sunakgo.nais2.transfer";
+const PLUGIN_IDENTIFIER: &str = "com.bluhair.naisblue.transfer";
 
 /// The handle links Tauri commands to the tracked Kotlin scheduler. On every
 /// non-Android target it intentionally returns a stable unsupported result.
@@ -79,6 +79,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::checkpoint,
             commands::status,
             commands::recover,
+            commands::configure_cloudflare,
         ])
         .build()
 }
