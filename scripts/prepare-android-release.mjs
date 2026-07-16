@@ -3,7 +3,11 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { patchAndroidBackDispatcher, patchAndroidSigning } from './patch-android-signing.mjs'
+import {
+    patchAndroidBackDispatcher,
+    patchAndroidKotlinToolchain,
+    patchAndroidSigning,
+} from './patch-android-signing.mjs'
 
 function requiredEnvironment(name) {
     const value = process.env[name]
@@ -74,6 +78,7 @@ if (!existsSync(gradleFile)) {
     throw new Error(`Tauri Android initialization did not create ${gradleFile}`)
 }
 
+patchAndroidKotlinToolchain(join(androidRoot, 'build.gradle.kts'))
 patchAndroidSigning(gradleFile, policy.debugApplicationIdSuffix)
 patchAndroidBackDispatcher(join(androidRoot, 'app', 'src', 'main', 'AndroidManifest.xml'))
 

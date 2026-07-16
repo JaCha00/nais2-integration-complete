@@ -6,6 +6,30 @@ const START_MARKER = '// NAIS_ANDROID_SIGNING_START'
 const END_MARKER = '// NAIS_ANDROID_SIGNING_END'
 const CONFIG_MARKER = '// NAIS_ANDROID_SIGNING_CONFIG'
 const DEBUG_ID_MARKER = '// NAIS_ANDROID_DEBUG_ID'
+const ANDROID_KOTLIN_VERSION = '2.1.20'
+
+// Tauri owns the generated root build file, while the tracked transfer module
+// depends on AndroidX. Normalizing the compiler here connects regenerated
+// projects to WorkManager's Kotlin 2.1 metadata without tracking generated files.
+export function patchAndroidKotlinToolchain(buildFile, version = ANDROID_KOTLIN_VERSION) {
+    const absolutePath = resolve(buildFile)
+    const original = readFileSync(absolutePath, 'utf8')
+    const kotlinPlugin = /classpath\("org\.jetbrains\.kotlin:kotlin-gradle-plugin:[^"]+"\)/g
+    const matches = original.match(kotlinPlugin) ?? []
+    if (matches.length !== 1) {
+        throw new Error(
+            `Expected one Kotlin Gradle plugin declaration in ${absolutePath}, found ${matches.length}`,
+        )
+    }
+    const content = original.replace(
+        kotlinPlugin,
+        `classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${version}")`,
+    )
+    if (content !== original) {
+        writeFileSync(absolutePath, content, 'utf8')
+    }
+    return content !== original
+}
 
 function removeManagedSigning(content) {
     return content
@@ -167,9 +191,15 @@ if (invokedPath === fileURLToPath(import.meta.url)) {
         '--manifest-file',
         join(dirname(gradleFile), 'src', 'main', 'AndroidManifest.xml'),
     )
+    const rootBuildFile = readOption(
+        '--root-build-file',
+        resolve(dirname(gradleFile), '..', 'build.gradle.kts'),
+    )
     const debugSuffix = readOption('--debug-suffix', '')
+    const toolchainChanged = patchAndroidKotlinToolchain(rootBuildFile)
     const changed = patchAndroidSigning(gradleFile, debugSuffix)
     const manifestChanged = patchAndroidBackDispatcher(manifestFile)
+    console.log(`Android Kotlin toolchain ${toolchainChanged ? 'updated' : 'already current'}: ${rootBuildFile}`)
     console.log(`Android signing configuration ${changed ? 'updated' : 'already current'}: ${gradleFile}`)
     console.log(`Android Back dispatcher ${manifestChanged ? 'updated' : 'already current'}: ${manifestFile}`)
 }
