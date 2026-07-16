@@ -883,7 +883,7 @@ export default function MainMode() {
                 moduleStack={moduleStack}
                 inspector={inspector}
                 mobileDock={mobileDock}
-                workspaceClassName="rounded-panel bg-canvas"
+                workspaceClassName="rounded-panel border border-border bg-canvas"
                 workspace={(
                     <div className="relative h-full min-h-0 min-w-0 overflow-hidden" data-testid="main-result-canvas">
             {/* Full Screen Image Area */}

@@ -21,7 +21,7 @@ interface AnimatedNavBarProps {
     items: NavItem[]
 }
 
-const PRIMARY_PATHS = new Set(['/', '/scenes', '/tools', '/library'])
+const MOBILE_PRIMARY_PATHS = new Set(['/', '/scenes', '/tools', '/library'])
 
 function isRouteActive(pathname: string, itemPath: string) {
     return itemPath === '/'
@@ -36,8 +36,8 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
 
     // Four daily destinations plus one overflow keep every route accessible
     // without allowing navigation chrome to compete with the working canvas.
-    const primaryItems = items.filter(item => PRIMARY_PATHS.has(item.path))
-    const overflowItems = items.filter(item => !PRIMARY_PATHS.has(item.path))
+    const primaryItems = items.filter(item => MOBILE_PRIMARY_PATHS.has(item.path))
+    const overflowItems = items.filter(item => !MOBILE_PRIMARY_PATHS.has(item.path))
     const moreLabel = t('nav.more', 'More')
     const overflowIsActive = overflowItems.some(item => isRouteActive(location.pathname, item.path))
 
