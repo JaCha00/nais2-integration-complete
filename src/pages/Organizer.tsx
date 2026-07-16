@@ -427,8 +427,7 @@ export default function Organizer() {
 
     return (
         <main
-            className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-canvas"
-            style={{ paddingBottom: 'max(5rem, calc(4.5rem + env(safe-area-inset-bottom)))' }}
+            className="flex h-full min-h-0 min-w-0 flex-col overflow-y-auto bg-canvas lg:overflow-hidden"
             aria-label="Organizer"
         >
             <header className="shrink-0 border-b border-border px-3 py-3 sm:px-5">
@@ -478,8 +477,9 @@ export default function Organizer() {
                 </div>
             </header>
 
-            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.42fr)]">
-                <section className="flex min-h-0 min-w-0 flex-col border-b border-border lg:border-b-0 lg:border-r" aria-label="Virtualized artifact browser">
+            {/* Narrow screens scroll the two sections as one document; desktop constrains the grid and policy pane to independent scrollers. */}
+            <div className="grid min-w-0 flex-none grid-cols-1 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.42fr)]">
+                <section className="flex min-h-[420px] min-w-0 flex-col border-b border-border lg:min-h-0 lg:border-b-0 lg:border-r" aria-label="Virtualized artifact browser">
                     <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-2 sm:px-5">
                         <p className="text-sm text-muted-foreground">{entries.length.toLocaleString()} images · renders {Math.max(0, gridRange.end - gridRange.start).toLocaleString()} tiles</p>
                         <label className="flex min-h-11 items-center gap-2 text-xs">
@@ -561,7 +561,7 @@ export default function Organizer() {
                     </div>
                 </section>
 
-                <aside className="min-h-0 overflow-y-auto" aria-label="Distribution policy and slots">
+                <aside className="overflow-visible lg:min-h-0 lg:overflow-y-auto" aria-label="Distribution policy and slots">
                     <section className="border-b border-border p-3 sm:p-5">
                         <h2 className="font-semibold">Assignment slots</h2>
                         <p className="mt-1 text-xs text-muted-foreground">Enter uses the next empty slot. Drag to a named slot, or tap a selected thumbnail then tap a slot.</p>

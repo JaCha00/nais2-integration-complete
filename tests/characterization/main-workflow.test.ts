@@ -1117,7 +1117,7 @@ describe('Main workflow golden characterization', () => {
             .toMatchObject({ collisionPolicy: 'overwrite' })
     })
 
-    it('emits payload-parity warnings from the final v2 model instead of the pre-resolve store model', async () => {
+    it('uses the final supported v2 model without an obsolete parity-warning gate', async () => {
         const profileForModel = (model: string) => ({
             revision: 6,
             updatedBy: 'agent' as const,
@@ -1141,22 +1141,22 @@ describe('Main workflow golden characterization', () => {
         stores.useGenerationStore.setState({
             compositionMode: 'v2',
             selectedRecipeId: 'model-recipe',
-            model: 'nai-diffusion-3',
+            model: 'nai-diffusion-4-curated-preview',
         })
         await stores.useGenerationStore.getState().generate()
         expect(runtimeCapture.params[0].model).toBe('nai-diffusion-4-5-full')
-        expect(runtimeCapture.toasts.some(toast => toast.title === 'Payload parity 미검증 모델')).toBe(false)
+        expect(runtimeCapture.toasts).toEqual([])
 
         resetStores()
-        stores.useAssetModuleStore.setState({ profile: profileForModel('nai-diffusion-3') })
+        stores.useAssetModuleStore.setState({ profile: profileForModel('nai-diffusion-4-full') })
         stores.useGenerationStore.setState({
             compositionMode: 'v2',
             selectedRecipeId: 'model-recipe',
             model: 'nai-diffusion-4-5-full',
         })
         await stores.useGenerationStore.getState().generate()
-        expect(runtimeCapture.params[0].model).toBe('nai-diffusion-3')
-        expect(runtimeCapture.toasts.some(toast => toast.title === 'Payload parity 미검증 모델')).toBe(true)
+        expect(runtimeCapture.params[0].model).toBe('nai-diffusion-4-full')
+        expect(runtimeCapture.toasts).toEqual([])
     })
 
     it('blocks strict invalid v2 before transport/output and keeps legacy rollback available', async () => {

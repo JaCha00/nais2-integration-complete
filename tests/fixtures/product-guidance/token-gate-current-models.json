@@ -23,8 +23,6 @@
     { "model": "nai-diffusion-4-5-curated", "family": "t5", "classification": "unavailable", "contextLimit": 512 },
     { "model": "nai-diffusion-4-5-full", "family": "t5", "classification": "unavailable", "contextLimit": 512 },
     { "model": "nai-diffusion-4-curated-preview", "family": "t5", "classification": "unavailable", "contextLimit": 512 },
-    { "model": "nai-diffusion-4-full", "family": "t5", "classification": "unavailable", "contextLimit": 512 },
-    { "model": "nai-diffusion-3", "family": "undocumented", "classification": "unavailable", "contextLimit": 512 },
-    { "model": "nai-diffusion-furry-3", "family": "undocumented", "classification": "unavailable", "contextLimit": 512 }
+    { "model": "nai-diffusion-4-full", "family": "t5", "classification": "unavailable", "contextLimit": 512 }
   ]
 }

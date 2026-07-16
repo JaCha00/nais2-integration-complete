@@ -23,7 +23,6 @@ interface AnimatedNavBarProps {
 }
 
 const MOBILE_PRIMARY_PATHS = new Set(['/', '/scenes', '/tools', '/library'])
-const COMPACT_DESKTOP_VISIBLE_ITEMS = 9
 
 function isRouteActive(pathname: string, itemPath: string) {
     return itemPath === '/'
@@ -91,8 +90,6 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
 
     const primaryItems = items.filter(item => MOBILE_PRIMARY_PATHS.has(item.path))
     const overflowItems = items.filter(item => !MOBILE_PRIMARY_PATHS.has(item.path))
-    const compactDesktopItems = items.slice(0, COMPACT_DESKTOP_VISIBLE_ITEMS)
-    const compactDesktopOverflowItems = items.slice(COMPACT_DESKTOP_VISIBLE_ITEMS)
     const moreLabel = t('nav.more', 'More')
     const overflowIsActive = overflowItems.some(item => isRouteActive(location.pathname, item.path))
 
@@ -137,7 +134,7 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
             ref={navRef}
             aria-label={t('nav.navigation', 'Primary navigation')}
             className={cn(
-                'flex w-full min-w-0 items-center overflow-hidden',
+                'flex w-full min-w-0 items-center overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
                 isTiny ? "justify-start" : "justify-center",
             )}
         >
@@ -193,19 +190,25 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
                 </DropdownMenu>
             </div>
 
+            {/* Compact desktop shares the four core routes with mobile; the overflow menu prevents utility controls from squeezing eleven tabs. */}
             <div className={cn(
                 'hidden w-full min-w-0 items-center justify-center sm:flex',
                 isCompact ? 'gap-0' : 'gap-1',
             )}>
-                {(isCompact ? compactDesktopItems : items).map(item => renderItem(item, 'activeTab-desktop', !isCompact))}
-                {isCompact && compactDesktopOverflowItems.length > 0 && (
+                {(isCompact ? primaryItems : items).map(item => renderItem(item, 'activeTab-desktop', !isCompact))}
+                {isCompact && overflowItems.length > 0 && (
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                             <button
                                 type="button"
                                 aria-label={moreLabel}
                                 title={moreLabel}
-                                className="inline-flex h-11 min-h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-control border border-transparent text-muted-foreground transition-colors duration-standard hover:border-border hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+                                className={cn(
+                                    'inline-flex h-11 min-h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-control border transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
+                                    overflowIsActive
+                                        ? 'border-primary/30 bg-accent text-primary'
+                                        : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground',
+                                )}
                             >
                                 <Ellipsis className="h-4 w-4" aria-hidden="true" />
                             </button>
@@ -215,7 +218,7 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
                             sideOffset={8}
                             className="w-56 rounded-panel border-border bg-popover p-1 text-popover-foreground shadow-panel"
                         >
-                            {compactDesktopOverflowItems.map(item => {
+                            {overflowItems.map(item => {
                                 const isActive = isRouteActive(location.pathname, item.path)
                                 const label = t(item.labelKey, item.fallbackLabel ?? item.labelKey)
                                 return (

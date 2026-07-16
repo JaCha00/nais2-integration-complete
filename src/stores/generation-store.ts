@@ -609,32 +609,19 @@ export const AVAILABLE_MODELS = [
     { id: 'nai-diffusion-4-5-full', name: 'NAI Diffusion V4.5 Full' },
     { id: 'nai-diffusion-4-curated-preview', name: 'NAI Diffusion V4 Curated' },
     { id: 'nai-diffusion-4-full', name: 'NAI Diffusion V4 Full' },
-    { id: 'nai-diffusion-3', name: 'NAI Diffusion V3 (Anime)' },
-    { id: 'nai-diffusion-furry-3', name: 'NAI Diffusion Furry V3' },
 ] as const
 
-export const VERIFIED_PAYLOAD_PARITY_MODELS = [
-    'nai-diffusion-4-5-curated',
-    'nai-diffusion-4-5-full',
-    'nai-diffusion-4-curated-preview',
-    'nai-diffusion-4-full',
-] as const
+export const DEFAULT_GENERATION_MODEL = 'nai-diffusion-4-5-full'
 
-export function isVerifiedPayloadParityModel(model: string): boolean {
-    return VERIFIED_PAYLOAD_PARITY_MODELS.includes(model as typeof VERIFIED_PAYLOAD_PARITY_MODELS[number])
-}
-
-export function warnIfUnverifiedPayloadParityModel(model: string): void {
-    if (isVerifiedPayloadParityModel(model)) return
-
-    toast({
-        title: i18n.t('toast.payloadParityUnverified.title', 'Payload parity 미검증 모델'),
-        description: i18n.t(
-            'toast.payloadParityUnverified.desc',
-            '현재 공식 웹 payload parity는 V4/V4.5 모델만 검증되어 있습니다.'
-        ),
-        variant: 'destructive',
-    })
+/**
+ * The selectable registry is release authority; preset/history/hydration
+ * callers use this boundary so retired model IDs remain readable but cannot
+ * silently reactivate an unsupported provider request.
+ */
+export function normalizeSelectableGenerationModel(model: string): string {
+    return AVAILABLE_MODELS.some(candidate => candidate.id === model)
+        ? model
+        : DEFAULT_GENERATION_MODEL
 }
 
 interface GenerationState {
@@ -789,7 +776,7 @@ export const useGenerationStore = create<GenerationState>()(
             negativePrompt: '',
             inpaintingPrompt: '',
 
-            model: 'nai-diffusion-4-5-full',
+            model: DEFAULT_GENERATION_MODEL,
 
             steps: 28,
             cfgScale: 5.0,
@@ -844,10 +831,7 @@ export const useGenerationStore = create<GenerationState>()(
             setNegativePrompt: (prompt) => set({ negativePrompt: prompt }),
             setInpaintingPrompt: (prompt) => set({ inpaintingPrompt: prompt }),
 
-            setModel: (model) => {
-                if (get().compositionMode !== 'v2') warnIfUnverifiedPayloadParityModel(model)
-                set({ model })
-            },
+            setModel: (model) => set({ model: normalizeSelectableGenerationModel(model) }),
             setSteps: (steps) => set({ steps }),
             setCfgScale: (cfgScale) => set({ cfgScale }),
             setCfgRescale: (cfgRescale) => set({ cfgRescale }),
@@ -859,7 +843,7 @@ export const useGenerationStore = create<GenerationState>()(
                 additionalPrompt: preset.additionalPrompt,
                 detailPrompt: preset.detailPrompt,
                 negativePrompt: preset.negativePrompt,
-                model: preset.model,
+                model: normalizeSelectableGenerationModel(preset.model),
                 steps: preset.steps,
                 cfgScale: preset.cfgScale,
                 cfgRescale: preset.cfgRescale,
@@ -962,8 +946,6 @@ export const useGenerationStore = create<GenerationState>()(
                     })
                     return
                 }
-
-                if (compositionMode !== 'v2') warnIfUnverifiedPayloadParityModel(model)
 
                 // Create new AbortController and session ID
                 const abortController = new AbortController()
@@ -1374,10 +1356,6 @@ export const useGenerationStore = create<GenerationState>()(
                         const imageFormat = generationParams.imageFormat ?? settings.imageFormat
                         const effectiveMetadataMode = generationParams.metadataMode ?? settings.metadataMode
                         const v2Output = compositionMode === 'v2' ? compositionOutput : null
-                        if (compositionMode === 'v2') {
-                            warnIfUnverifiedPayloadParityModel(generationParams.model)
-                        }
-
                         // Reset progress
                         set({ streamProgress: 0 })
 
@@ -1799,6 +1777,7 @@ export const useGenerationStore = create<GenerationState>()(
                     state.history = state.history.slice(0, 20)
                 }
                 if (state) {
+                    state.model = normalizeSelectableGenerationModel(state.model)
                     if (state.styleLabCompositionMode !== 'legacy'
                         && state.styleLabCompositionMode !== 'v2') {
                         state.styleLabCompositionMode = 'v2'

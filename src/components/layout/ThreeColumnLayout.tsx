@@ -46,7 +46,7 @@ import { calculateExtraCost } from '@/lib/anlas-calculator'
 import { useCharacterStore } from '@/stores/character-store'
 import { usePresetStore } from '@/stores/preset-store'
 import { useLayoutStore } from '@/stores/layout-store'
-import { isMobileRuntime } from '@/platform/runtime'
+import { isAndroidRuntime, isMobileRuntime } from '@/platform/runtime'
 
 // Check if running on Mac (works in browser and Tauri WebView)
 const isMac = navigator.platform.toUpperCase().includes('MAC') ||
@@ -78,7 +78,6 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     const compositionWorkspaceOwnsRails = location.pathname === '/'
         || location.pathname === '/scenes'
         || location.pathname.startsWith('/scenes/')
-    const organizerRoute = location.pathname === '/organizer'
     const supportPanelsAreDocked = isDesktopShell && !compositionWorkspaceOwnsRails
 
     // Get generation params for cost calculation
@@ -276,8 +275,14 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
         <div
             className="flex h-screen flex-col overflow-hidden bg-background"
             style={isMobileRuntime ? {
-                paddingTop: 'env(safe-area-inset-top)',
-                paddingBottom: 'env(safe-area-inset-bottom)',
+                // Some Android WebViews report zero CSS safe-area insets despite edge-to-edge system bars.
+                // Runtime fallbacks keep the shell clear of status/navigation controls while iOS keeps native insets.
+                paddingTop: isAndroidRuntime
+                    ? 'max(1.5rem, env(safe-area-inset-top))'
+                    : 'env(safe-area-inset-top)',
+                paddingBottom: isAndroidRuntime
+                    ? 'max(3.5rem, env(safe-area-inset-bottom))'
+                    : 'env(safe-area-inset-bottom)',
             } : undefined}
         >
             {/* Custom Title Bar - Only show on Windows (Mac uses native decorations) */}
@@ -288,7 +293,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                 <aside
                     id="nais2-prompt-dock"
                     className={cn(
-                        "hidden w-[420px] flex-shrink-0 flex-col overflow-hidden rounded-panel border border-border bg-card 2xl:flex 2xl:w-[500px]",
+                        "hidden min-h-0 w-[420px] flex-shrink-0 flex-col overflow-hidden rounded-panel border border-border bg-card 2xl:flex 2xl:w-[500px]",
                         (!leftSidebarVisible || compositionWorkspaceOwnsRails) && "2xl:hidden"
                     )}
                 >
@@ -296,7 +301,8 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                 </aside>
 
                 <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-panel border border-border bg-canvas">
-                    <div className="z-10 flex shrink-0 items-center gap-2 border-b border-border bg-card px-2 py-1 sm:px-3">
+                    {/* The compact row keeps navigation primary; utility dialogs wrap below it on phones so every control stays in normal flow. */}
+                    <div className="z-10 flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-card px-2 py-1 sm:flex-nowrap sm:px-3">
                         <Tip content={t('layout.toggleLeftSidebar', 'Toggle Left Sidebar')}>
                             <button
                                 type="button"
@@ -332,12 +338,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 <PanelRight className="h-4 w-4" aria-hidden="true" />
                             </button>
                         </Tip>
-                        <div className={cn(
-                            'fixed left-0 z-40 flex shrink-0 flex-col gap-2 sm:static sm:z-auto sm:flex-row',
-                            organizerRoute
-                                ? 'bottom-[calc(0.75rem+env(safe-area-inset-bottom))]'
-                                : 'bottom-[calc(4.5rem+env(safe-area-inset-bottom))]',
-                        )}>
+                        <div className="ml-auto flex basis-full shrink-0 items-center justify-end gap-2 sm:basis-auto">
                             <ProductGuidance />
                             <DiagnosticDrawer />
                         </div>
@@ -355,7 +356,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                 <aside
                     id="nais2-history-dock"
                     className={cn(
-                        "hidden w-[280px] flex-shrink-0 overflow-hidden rounded-panel border border-border bg-card 2xl:block",
+                        "hidden min-h-0 w-[280px] flex-shrink-0 overflow-hidden rounded-panel border border-border bg-card 2xl:block",
                         (!rightSidebarVisible || compositionWorkspaceOwnsRails) && "2xl:hidden"
                     )}
                 >

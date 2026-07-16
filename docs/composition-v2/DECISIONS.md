@@ -8,7 +8,7 @@
 
 상태: Accepted
 
-`E:\AI_Project_Library\projects\nais\nais2-main` checkout의 runtime 코드와 테스트를 source of truth로 사용한다. C 드라이브/OneDrive의 NAIS checkout과 거기서 생성된 지침은 명시적으로 다시 활성화되지 않는 한 legacy다. README, 과거 integration 계획, legacy 디렉터리, 비교 저장소가 충돌하면 현재 E 드라이브 runtime 코드, 최신 사용자 지시, fresh verification 결과를 우선한다. NAIS3는 비교 참고 자료일 뿐 wholesale port의 원본이 아니다.
+`E:\AI_Project_Library\projects\nais\nais_blue` checkout의 runtime 코드와 테스트를 source of truth로 사용한다. C 드라이브/OneDrive의 NAIS checkout과 거기서 생성된 지침은 명시적으로 다시 활성화되지 않는 한 legacy다. README, 과거 integration 계획, legacy 디렉터리, 비교 저장소가 충돌하면 현재 E 드라이브 runtime 코드, 최신 사용자 지시, fresh verification 결과를 우선한다. NAIS3는 비교 참고 자료일 뿐 wholesale port의 원본이 아니다.
 
 ## D-002 — Asset Profile을 출발점으로 사용
 

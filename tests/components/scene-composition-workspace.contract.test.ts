@@ -92,4 +92,15 @@ describe('Scene composition workspace information architecture', () => {
         expect(detail).toContain('data-testid="scene-resolved-action"')
         expect(detail).toContain('SHORTCUT_EVENTS.OPEN_FRAGMENT_DIALOG')
     })
+
+    it('routes Scene detail generation and cancellation through the selected queue authority', async () => {
+        const detail = await source('src/pages/SceneDetail.tsx')
+
+        expect(detail).toContain("queueExecutionAuthority === 'legacy'")
+        expect(detail).toContain('enqueueCurrentSceneQueue()')
+        expect(detail).toContain('coordinator.drain()')
+        expect(detail).toContain("coordinator.cancelWorkflow('scene')")
+        expect(detail).toContain('coordinator.cancelBatch(result.batch.id)')
+        expect(detail).toContain('durableCancelRequestedRef.current')
+    })
 })

@@ -64,9 +64,10 @@ describe('Cloudflare transfer protocol', () => {
     })
 
     it('keeps replay, idempotency, tombstone, and no-late-commit state in Durable Object storage', async () => {
-        const [worker, wrangler, executor, credentialStore] = await Promise.all([
+        const [worker, wrangler, rotation, executor, credentialStore] = await Promise.all([
             source('cloudflare/nais-transfer-worker/src/index.ts'),
             source('wrangler.toml'),
+            source('scripts/rotate-cloudflare-pairing-and-qa.mjs'),
             source('src-tauri/plugins/nais-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/CloudflareTransferExecutor.kt'),
             source('src-tauri/plugins/nais-android-transfer/android/src/main/java/com/bluhair/naisblue/transfer/CloudflareCredentialStore.kt'),
         ])
@@ -84,6 +85,11 @@ describe('Cloudflare transfer protocol', () => {
         expect(wrangler).toContain('new_sqlite_classes = ["TransferStateObject"]')
         expect(wrangler).toContain('bucket_name = "prime"')
         expect(wrangler).toContain('R2_PREFIX = "nais"')
+        expect(wrangler).toContain('binding = "CF_VERSION_METADATA"')
+        expect(worker).toContain("url.pathname === '/v1/ready'")
+        expect(worker).toContain('env.CF_VERSION_METADATA.id')
+        expect(rotation).toContain("[wranglerCli, 'secret', 'bulk']")
+        expect(rotation).toContain('await waitForEdgeVersion(secretVersionId)')
         expect(executor).toContain('reportCheckpoint(checkpoint)')
         expect(credentialStore).toContain('AndroidKeyStore')
         expect(credentialStore).toContain('FIELD_SEQUENCE')

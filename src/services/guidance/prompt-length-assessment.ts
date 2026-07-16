@@ -55,8 +55,6 @@ export const CURRENT_MODEL_TOKEN_CAPABILITIES: ModelTokenCapabilityRegistry = Ob
     'nai-diffusion-4-5-full': { tokenizerFamily: 't5', contextLimitTokens: 512 },
     'nai-diffusion-4-curated-preview': { tokenizerFamily: 't5', contextLimitTokens: 512 },
     'nai-diffusion-4-full': { tokenizerFamily: 't5', contextLimitTokens: 512 },
-    'nai-diffusion-3': { tokenizerFamily: 'undocumented', contextLimitTokens: 512 },
-    'nai-diffusion-furry-3': { tokenizerFamily: 'undocumented', contextLimitTokens: 512 },
 })
 
 function sectionLengths(base: string, characters: readonly string[]): PromptSectionLengths {

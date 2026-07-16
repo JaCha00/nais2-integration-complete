@@ -18,6 +18,7 @@ interface Env {
     R2_PREFIX: string
     PAIRING_CAPABILITY_SHA256: string
     PAIRING_EXPIRES_AT_MS: string
+    CF_VERSION_METADATA: WorkerVersionMetadata
 }
 
 interface DeviceRecord {
@@ -58,6 +59,25 @@ function json(value: Record<string, unknown>, status = 200): Response {
 
 function denial(status = 403): Response {
     return new Response(FIXED_DENIAL, { status, headers: JSON_HEADERS })
+}
+
+/**
+ * Cloudflare logs receive only a fixed verifier stage, while callers keep the same generic denial.
+ * This makes production 403 failures actionable without exposing capability, key, device, or
+ * request material; operators must inspect real-time logs only while pairing is expired or disabled.
+ */
+function pairingDenial(stage: 'request' | 'capability' | 'expiry' | 'body' | 'consume' | 'install'): Response {
+    console.warn(`NAIS_PAIRING_DENIED stage=${stage}`)
+    return denial()
+}
+
+/**
+ * Version metadata is supplied by Cloudflare and consumed by the rotation script before pairing.
+ * Returning only the public version ID proves which code-and-binding version served the request,
+ * so no pairing capability, verifier, expiry, device, or request material crosses this boundary.
+ */
+function readiness(env: Env): Response {
+    return json({ versionId: env.CF_VERSION_METADATA.id })
 }
 
 async function sha256(bytes: ArrayBuffer | Uint8Array | string): Promise<string> {
@@ -123,34 +143,40 @@ async function boundedBody(request: Request, maximumBytes: number): Promise<Arra
 }
 
 async function pair(request: Request, env: Env): Promise<Response> {
-    if (request.method !== 'POST' || request.headers.get('origin') !== null) return denial()
+    if (request.method !== 'POST' || request.headers.get('origin') !== null) return pairingDenial('request')
     const capability = request.headers.get('x-nais-pairing-capability') ?? ''
     const capabilityHash = await sha256(capability)
-    if (!constantTimeEqual(capabilityHash.slice(7), env.PAIRING_CAPABILITY_SHA256.trim().toLowerCase())
-        || Date.now() > Number(env.PAIRING_EXPIRES_AT_MS.trim())) return denial()
+    if (!constantTimeEqual(capabilityHash.slice(7), env.PAIRING_CAPABILITY_SHA256.trim().toLowerCase())) {
+        return pairingDenial('capability')
+    }
+    if (Date.now() > Number(env.PAIRING_EXPIRES_AT_MS.trim())) return pairingDenial('expiry')
     const body = await boundedJson(request) as Record<string, unknown>
     const deviceId = typeof body.deviceId === 'string' ? body.deviceId : ''
     const publicKeySpki = typeof body.publicKeySpki === 'string' ? body.publicKeySpki : ''
-    if (!validDeviceId(deviceId) || !/^[A-Za-z0-9+/=]{120,256}$/.test(publicKeySpki)) return denial()
+    if (!validDeviceId(deviceId) || !/^[A-Za-z0-9+/=]{120,256}$/.test(publicKeySpki)) {
+        return pairingDenial('body')
+    }
 
     const pairingStub = env.TRANSFER_STATE.get(env.TRANSFER_STATE.idFromName('__pairing__'))
     const consume = await pairingStub.fetch('https://state.internal/consume-pairing', {
         method: 'POST',
         body: JSON.stringify({ capabilityHash, deviceId }),
     })
-    if (!consume.ok) return denial()
+    if (!consume.ok) return pairingDenial('consume')
     const deviceStub = env.TRANSFER_STATE.get(env.TRANSFER_STATE.idFromName(`device:${deviceId}`))
     const installed = await deviceStub.fetch('https://state.internal/install-device', {
         method: 'POST',
         body: JSON.stringify({ deviceId, publicKeySpki }),
     })
-    return installed.ok ? json({ paired: true, deviceId }, 201) : denial()
+    return installed.ok ? json({ paired: true, deviceId }, 201) : pairingDenial('install')
 }
 
 export default {
     async fetch(request: Request, env: Env): Promise<Response> {
         try {
             const url = new URL(request.url)
+            if (url.pathname === '/v1/ready' && request.method === 'GET'
+                && request.headers.get('origin') === null) return readiness(env)
             if (url.pathname === '/v1/pair') return await pair(request, env)
             if (request.headers.get('origin') !== null) return denial()
             const deviceId = request.headers.get('x-nais-device') ?? ''

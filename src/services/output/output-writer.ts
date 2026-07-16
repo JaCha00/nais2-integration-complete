@@ -152,6 +152,24 @@ export class OutputWriterError extends Error {
     }
 }
 
+/**
+ * Links the transaction failure to the cleanup failure using the standard Error.cause chain.
+ * Diagnostics depend on that linear chain, so preserving both failures here explains why a
+ * recovery journal remains without logging raw platform values or weakening rollback safety.
+ */
+function rollbackFailureCause(transactionError: unknown, cleanupError: unknown): Error {
+    const transactionCause = transactionError instanceof Error
+        ? transactionError
+        : new Error(`Output transaction failed: ${String(transactionError)}`)
+    const cleanupCause = cleanupError instanceof Error
+        ? cleanupError
+        : new Error(`Output rollback cleanup failed: ${String(cleanupError)}`)
+    const linked = new Error(`Rollback cleanup failed: ${cleanupCause.message}`) as Error & { cause?: unknown }
+    linked.name = 'OutputRollbackCleanupError'
+    linked.cause = transactionCause
+    return linked
+}
+
 function randomTransactionId(): string {
     const uuid = globalThis.crypto?.randomUUID?.()
     return (uuid ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9-]/g, '')
@@ -594,7 +612,7 @@ export class OutputWriter {
                     journal.phase = 'rollback-required'
                     try { await this.persistJournal(journal) } catch { /* retain earlier journal */ }
                     const rollbackError = new OutputWriterError('rollback-cleanup', 'Output failed and rollback is pending', {
-                        cause: { transactionError: error, cleanupError },
+                        cause: rollbackFailureCause(error, cleanupError),
                     })
                     reportDiagnostic(rollbackError, {
                         operation: 'output.write',
