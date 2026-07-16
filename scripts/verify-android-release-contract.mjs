@@ -3,7 +3,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { patchAndroidBackDispatcher, patchAndroidSigning } from './patch-android-signing.mjs'
+import {
+    patchAndroidBackDispatcher,
+    patchAndroidKotlinToolchain,
+    patchAndroidSigning,
+} from './patch-android-signing.mjs'
 import { resolveAndroidUpdateBaseline } from './android-update-baseline.mjs'
 
 const root = process.cwd()
@@ -200,6 +204,18 @@ assert.ok(localSignedBuild.includes('scripts\\patch-android-signing.mjs'))
 
 const temporaryRoot = mkdtempSync(join(tmpdir(), 'nais-android-signing-'))
 try {
+    const rootBuildFile = join(temporaryRoot, 'root-build.gradle.kts')
+    writeFileSync(
+        rootBuildFile,
+        `dependencies {
+    classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.25")
+}
+`,
+    )
+    assert.equal(patchAndroidKotlinToolchain(rootBuildFile), true)
+    assert.equal(patchAndroidKotlinToolchain(rootBuildFile), false)
+    assert.match(readFileSync(rootBuildFile, 'utf8'), /kotlin-gradle-plugin:2\.1\.20/)
+
     const gradleFile = join(temporaryRoot, 'build.gradle.kts')
     writeFileSync(
         gradleFile,

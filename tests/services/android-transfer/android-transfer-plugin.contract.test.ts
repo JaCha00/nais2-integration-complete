@@ -37,7 +37,7 @@ describe('Phase 12 Android transfer scheduling plugin contract', () => {
 
         expect(cargo).toContain('links = "tauri-plugin-nais-android-transfer"')
         expect(build).toContain('.android_path("android")')
-        expect(gradle).toContain('androidx.work:work-runtime-ktx:2.10.5')
+        expect(gradle).toContain('androidx.work:work-runtime-ktx:2.11.2')
         expect(gradle).toContain('Apache-2.0')
         expect(gradle).not.toMatch(/software\.amazon|postgrest|gotrue|catalog/i)
 

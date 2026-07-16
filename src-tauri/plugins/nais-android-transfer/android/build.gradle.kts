@@ -35,7 +35,9 @@ android {
 dependencies {
     implementation(project(":tauri-android"))
 
-    // 2.10.5 is the newest stable line compatible with Tauri's Kotlin 1.9.25
-    // compiler. It is Apache-2.0, mobile-only, and adds no transport SDK.
-    implementation("androidx.work:work-runtime-ktx:2.10.5")
+    // WorkManager owns durable, constraint-aware scheduling and connects the
+    // transfer scheduler to Android's JobScheduler/foreground-service bridge.
+    // Apache-2.0 WorkManager 2.11.2 supports this module's minSdk 24 and adds
+    // no transport provider SDK.
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
 }
