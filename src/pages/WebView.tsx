@@ -367,7 +367,7 @@ export default function WebView() {
     return (
         <div className="flex flex-col h-full gap-3 p-4">
             {/* Browser Controls */}
-            <Card glass>
+            <Card>
                 <CardContent className="p-3">
                     <form onSubmit={handleNavigate} className="flex items-center gap-2">
                         <div className="flex gap-1">
@@ -535,7 +535,7 @@ export default function WebView() {
                 style={{ backgroundColor: isBrowserOpen ? 'transparent' : undefined }}
             >
                 {!isBrowserOpen && (
-                    <Card glass className="h-full">
+                    <Card className="h-full">
                         <CardContent className="p-6 h-full flex flex-col items-center justify-center text-center">
                             <Globe className="h-16 w-16 text-muted-foreground/50 mb-4" />
                             <h2 className="text-xl font-semibold mb-2">

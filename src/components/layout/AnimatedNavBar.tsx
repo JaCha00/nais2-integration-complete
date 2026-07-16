@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
@@ -23,7 +22,6 @@ interface AnimatedNavBarProps {
 }
 
 const MOBILE_PRIMARY_PATHS = new Set(['/', '/scenes', '/tools', '/library'])
-const LABELED_NAV_MIN_WIDTH = 1360
 
 function isRouteActive(pathname: string, itemPath: string) {
     return itemPath === '/'
@@ -34,62 +32,10 @@ function isRouteActive(pathname: string, itemPath: string) {
 export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
     const { t } = useTranslation()
     const location = useLocation()
-    const navRef = useRef<HTMLElement>(null)
     const reduceMotion = useReducedMotion()
-    const [{ isCompact, isTiny }, setNavigationMode] = useState(() => ({
-        isCompact: true,
-        isTiny: window.innerWidth < 480,
-    }))
 
-    useEffect(() => {
-        const node = navRef.current
-        const measuredNode = node?.parentElement ?? node
-        let rafId = 0
-
-        const syncNavigationMode = () => {
-            if (rafId) {
-                cancelAnimationFrame(rafId)
-            }
-
-            rafId = requestAnimationFrame(() => {
-                const availableWidth = measuredNode?.getBoundingClientRect().width ?? window.innerWidth
-                const nextMode = {
-                    // Eleven translated labels need the measured center-panel width, not the viewport
-                    // breakpoint. Below this bound the four primary icons plus More remain fully visible.
-                    isCompact: window.innerWidth < 1536 || availableWidth < LABELED_NAV_MIN_WIDTH,
-                    isTiny: availableWidth < 320 || window.innerWidth < 480,
-                }
-
-                setNavigationMode(previous => (
-                    previous.isCompact === nextMode.isCompact && previous.isTiny === nextMode.isTiny
-                        ? previous
-                        : nextMode
-                ))
-            })
-        }
-
-        syncNavigationMode()
-
-        const observer = typeof ResizeObserver !== 'undefined' && measuredNode
-            ? new ResizeObserver(syncNavigationMode)
-            : null
-        if (observer && measuredNode) {
-            observer.observe(measuredNode)
-        } else {
-            window.addEventListener('resize', syncNavigationMode)
-        }
-
-        return () => {
-            if (rafId) {
-                cancelAnimationFrame(rafId)
-            }
-            if (!observer) {
-                window.removeEventListener('resize', syncNavigationMode)
-            }
-            observer?.disconnect()
-        }
-    }, [])
-
+    // Four daily destinations plus one overflow keep every route accessible
+    // without allowing navigation chrome to compete with the working canvas.
     const primaryItems = items.filter(item => MOBILE_PRIMARY_PATHS.has(item.path))
     const overflowItems = items.filter(item => !MOBILE_PRIMARY_PATHS.has(item.path))
     const moreLabel = t('nav.more', 'More')
@@ -107,17 +53,16 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
                 aria-label={label}
                 aria-current={isActive ? 'page' : undefined}
                 className={cn(
-                    'relative z-0 inline-flex h-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control border border-transparent text-sm font-medium transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
-                    isCompact ? (isTiny ? "h-10 w-10 p-0" : 'w-11 p-2') : 'px-3 py-2',
+                    'relative z-0 inline-flex h-11 min-h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-control text-sm font-medium transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
                     isActive
                         ? 'text-primary'
-                        : 'text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground'
+                        : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                 )}
             >
                 {isActive && (
                     <motion.span
                         layoutId={layoutId}
-                        className="absolute inset-0 -z-10 rounded-control border border-primary/30 bg-accent"
+                        className="absolute inset-0 -z-10 rounded-control bg-accent"
                         transition={reduceMotion
                             ? { duration: 0 }
                             : { type: 'tween', duration: 0.18, ease: [0.2, 0, 0, 1] }}
@@ -133,15 +78,10 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
 
     return (
         <nav
-            ref={navRef}
             aria-label={t('nav.navigation', 'Primary navigation')}
-            className={cn(
-                'flex w-full min-w-0 items-center overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-                isTiny ? "justify-start" : "justify-center",
-            )}
+            className="flex w-full min-w-0 items-center justify-center"
         >
-            {/* DESIGN.md keeps compact navigation deterministic: four work routes plus one overflow at <640px. */}
-            <div className="flex w-full min-w-0 items-center justify-between gap-0 sm:hidden">
+            <div className="flex w-full max-w-[15rem] min-w-0 items-center justify-between gap-1">
                 {primaryItems.map(item => renderItem(item, 'activeTab-mobile', false))}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -150,10 +90,10 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
                             aria-label={moreLabel}
                             title={moreLabel}
                             className={cn(
-                                'inline-flex h-11 min-h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-control border text-sm transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
+                                'inline-flex h-11 min-h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-control text-sm transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
                                 overflowIsActive
-                                    ? 'border-primary/30 bg-accent text-primary'
-                                    : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground'
+                                    ? 'bg-accent text-primary'
+                                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                             )}
                         >
                             <Ellipsis className="h-4 w-4" aria-hidden="true" />
@@ -162,7 +102,7 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
                     <DropdownMenuContent
                         align="end"
                         sideOffset={8}
-                        className="w-56 rounded-panel border-border bg-popover p-1 text-popover-foreground shadow-panel"
+                        className="w-56 rounded-panel border-0 bg-popover p-1 text-popover-foreground shadow-overlay"
                     >
                         {overflowItems.map(item => {
                             const isActive = isRouteActive(location.pathname, item.path)
@@ -190,58 +130,6 @@ export function AnimatedNavBar({ items }: AnimatedNavBarProps) {
                         })}
                     </DropdownMenuContent>
                 </DropdownMenu>
-            </div>
-
-            {/* Compact desktop shares the four core routes with mobile; the overflow menu prevents utility controls from squeezing eleven tabs. */}
-            <div className={cn(
-                'hidden w-full min-w-0 items-center justify-center sm:flex',
-                isCompact ? 'gap-0' : 'gap-1',
-            )}>
-                {(isCompact ? primaryItems : items).map(item => renderItem(item, 'activeTab-desktop', !isCompact))}
-                {isCompact && overflowItems.length > 0 && (
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <button
-                                type="button"
-                                aria-label={moreLabel}
-                                title={moreLabel}
-                                className={cn(
-                                    'inline-flex h-11 min-h-11 w-11 min-w-11 shrink-0 items-center justify-center rounded-control border transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card',
-                                    overflowIsActive
-                                        ? 'border-primary/30 bg-accent text-primary'
-                                        : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground',
-                                )}
-                            >
-                                <Ellipsis className="h-4 w-4" aria-hidden="true" />
-                            </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                            align="end"
-                            sideOffset={8}
-                            className="w-56 rounded-panel border-border bg-popover p-1 text-popover-foreground shadow-panel"
-                        >
-                            {overflowItems.map(item => {
-                                const isActive = isRouteActive(location.pathname, item.path)
-                                const label = t(item.labelKey, item.fallbackLabel ?? item.labelKey)
-                                return (
-                                    <DropdownMenuItem
-                                        key={item.path}
-                                        asChild
-                                        className={cn(
-                                            'h-11 rounded-control px-3 focus:bg-accent focus:text-accent-foreground',
-                                            isActive && 'bg-accent text-primary',
-                                        )}
-                                    >
-                                        <NavLink to={item.path} aria-current={isActive ? 'page' : undefined} className="flex w-full items-center gap-3">
-                                            <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                                            <span className="truncate">{label}</span>
-                                        </NavLink>
-                                    </DropdownMenuItem>
-                                )
-                            })}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                )}
             </div>
         </nav>
     )

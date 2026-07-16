@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const START_MARKER = '// NAIS_ANDROID_SIGNING_START'
@@ -127,6 +127,31 @@ export function patchAndroidSigning(gradleFile, debugApplicationIdSuffix = '') {
     return content !== original
 }
 
+export function patchAndroidBackDispatcher(manifestFile) {
+    const absolutePath = resolve(manifestFile)
+    const original = readFileSync(absolutePath, 'utf8')
+    const applicationTag = original.match(/<application\b[\s\S]*?>/)?.[0]
+    if (!applicationTag) {
+        throw new Error(`Could not find the Android application tag in ${absolutePath}`)
+    }
+
+    // AndroidX supplies Tauri's native Back callback, which the React sheet listener consumes
+    // before Activity teardown; the generated manifest must opt into that dispatcher on API 33+.
+    const callbackAttribute = /android:enableOnBackInvokedCallback\s*=\s*["'][^"']*["']/
+    const updatedTag = callbackAttribute.test(applicationTag)
+        ? applicationTag.replace(callbackAttribute, 'android:enableOnBackInvokedCallback="true"')
+        : applicationTag.replace(
+            '<application',
+            '<application\n        android:enableOnBackInvokedCallback="true"',
+        )
+    const content = original.replace(applicationTag, updatedTag)
+
+    if (content !== original) {
+        writeFileSync(absolutePath, content, 'utf8')
+    }
+    return content !== original
+}
+
 function readOption(name, fallback) {
     const index = process.argv.indexOf(name)
     return index >= 0 ? process.argv[index + 1] : fallback
@@ -138,7 +163,13 @@ if (invokedPath === fileURLToPath(import.meta.url)) {
         '--gradle-file',
         resolve('src-tauri', 'gen', 'android', 'app', 'build.gradle.kts'),
     )
+    const manifestFile = readOption(
+        '--manifest-file',
+        join(dirname(gradleFile), 'src', 'main', 'AndroidManifest.xml'),
+    )
     const debugSuffix = readOption('--debug-suffix', '')
     const changed = patchAndroidSigning(gradleFile, debugSuffix)
+    const manifestChanged = patchAndroidBackDispatcher(manifestFile)
     console.log(`Android signing configuration ${changed ? 'updated' : 'already current'}: ${gradleFile}`)
+    console.log(`Android Back dispatcher ${manifestChanged ? 'updated' : 'already current'}: ${manifestFile}`)
 }

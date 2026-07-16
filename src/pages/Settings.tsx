@@ -486,7 +486,7 @@ export default function Settings() {
     return (
         <div className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas lg:flex-row">
             {/* Phones use one compact selector so settings content begins inside the first viewport. */}
-            <header className="shrink-0 border-b border-border bg-background px-3 py-2 lg:hidden">
+            <header className="shrink-0 bg-card px-3 py-2 lg:hidden">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <h1 className="shrink-0 text-lg font-semibold sm:mr-auto">{t('settingsPage.title')}</h1>
                     <div className="flex min-w-0 items-center gap-2">
@@ -507,7 +507,7 @@ export default function Settings() {
                             onClick={() => openUrl('https://discord.gg/N78K9GPN')}
                             title={t('settingsPage.sections.discord', '디스코드 커뮤니티')}
                             aria-label={t('settingsPage.sections.discord', '디스코드 커뮤니티')}
-                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control border border-border text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-muted-foreground transition-colors hover:bg-accent hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                             <MessagesSquare className="h-4 w-4" />
                         </button>
@@ -515,7 +515,7 @@ export default function Settings() {
                 </div>
             </header>
 
-            <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-background p-3 lg:flex">
+            <aside className="hidden w-56 shrink-0 flex-col bg-card p-3 lg:flex">
                 <h2 className="mb-3 px-2 text-lg font-semibold">{t('settingsPage.title')}</h2>
                 <nav className="space-y-1" aria-label={t('settingsPage.title')}>
                     {SECTIONS.map((section) => (
@@ -537,7 +537,7 @@ export default function Settings() {
                     ))}
                 </nav>
 
-                <div className="mt-2 border-t border-border pt-2">
+                <div className="mt-4 pt-2">
                     <button
                         type="button"
                         onClick={() => openUrl('https://discord.gg/N78K9GPN')}
@@ -562,7 +562,7 @@ export default function Settings() {
                                     {t('settingsPage.language.description')}
                                 </p>
                             </div>
-                            <div className="space-y-5 rounded-panel border border-border bg-card p-4 sm:p-5">
+                            <div className="space-y-5 rounded-panel bg-card p-5">
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="space-y-0.5">
                                         <label className="text-sm font-medium flex items-center gap-2">
@@ -588,7 +588,7 @@ export default function Settings() {
                                 </div>
 
                                 {/* Streaming Toggle */}
-                                <div className="flex items-center justify-between pt-4 border-t border-border/30">
+                                <div className="flex items-center justify-between pt-4">
                                     <div className="space-y-0.5">
                                         <label className="text-sm font-medium flex items-center gap-2">
                                             <Zap className="h-4 w-4 text-warning" />
@@ -605,7 +605,7 @@ export default function Settings() {
                                 </div>
 
                                 {/* Generation Delay */}
-                                <div className="space-y-3 pt-4 border-t border-border/30">
+                                <div className="space-y-3 pt-4">
                                     <div className="flex items-center justify-between">
                                         <label className="text-sm font-medium flex items-center gap-2">
                                             <Timer className="h-4 w-4 text-info" />
@@ -627,7 +627,7 @@ export default function Settings() {
                                 </div>
 
                                 {/* Version Info */}
-                                <div className="space-y-4 pt-4 border-t border-border/30">
+                                <div className="space-y-4 pt-4">
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div className="space-y-0.5">
                                             <label className="text-sm font-medium flex items-center gap-2">
@@ -746,7 +746,7 @@ export default function Settings() {
                                         }
                                         if (!isNewer) return null
                                         return (
-                                            <div className="flex flex-col gap-3 rounded-control border border-success/30 bg-success/10 p-3 sm:flex-row sm:items-center sm:justify-between">
+                                            <div className="flex flex-col gap-3 rounded-control bg-success/10 p-3 sm:flex-row sm:items-center sm:justify-between">
                                                 <div className="flex items-center gap-2">
                                                     <Sparkles className="h-4 w-4 text-success" />
                                                     <div>
@@ -790,7 +790,7 @@ export default function Settings() {
                                     {t('settingsPage.theme.description')}
                                 </p>
                             </div>
-                            <div className="space-y-5 rounded-panel border border-border bg-card p-4 sm:p-5">
+                            <div className="space-y-5 rounded-panel bg-card p-5">
                                 <div className="space-y-3">
                                     <label className="text-sm font-medium">{t('settingsPage.theme.mode')}</label>
                                     <div className="grid grid-cols-3 gap-3">
@@ -805,10 +805,10 @@ export default function Settings() {
                                                 onClick={() => setTheme(option.value)}
                                                 aria-pressed={theme === option.value}
                                                 className={cn(
-                                                    'flex min-h-11 flex-col items-center gap-2 rounded-control border p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                                    'flex min-h-11 flex-col items-center gap-2 rounded-control p-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                                                     theme === option.value
-                                                        ? 'border-primary bg-primary/5'
-                                                        : 'border-border/50 hover:border-border hover:bg-muted/30'
+                                                        ? 'bg-accent text-accent-foreground'
+                                                        : 'bg-muted/30 hover:bg-muted/60'
                                                 )}
                                             >
                                                 {/** Theme selection remains a real button so keyboard and assistive-tech state match the visual state. */}
@@ -862,8 +862,8 @@ export default function Settings() {
 
                             <CredentialVaultSettingsCard />
 
-                            <div className="space-y-5 rounded-panel border border-border bg-card p-4 sm:p-5">
-                                <div className="space-y-2 pt-4 border-t border-border/30">
+                            <div className="space-y-5 rounded-panel bg-card p-5">
+                                <div className="space-y-2 pt-4">
                                     <label className="text-sm font-medium flex items-center gap-2">
                                         <img src={GeminiIcon} alt="Gemini" className="h-4 w-4" />
                                         {t('settingsPage.api.geminiKey', 'Gemini API Key')}
@@ -902,7 +902,7 @@ export default function Settings() {
                                     {t('settingsPage.save.description')}
                                 </p>
                             </div>
-                            <div className="space-y-5 rounded-panel border border-border bg-card p-4 sm:p-5">
+                            <div className="space-y-5 rounded-panel bg-card p-5">
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between">
                                         <label className="text-sm font-medium">{t('settingsPage.save.outputFolders.main.label', 'Main Output Folder')}</label>
@@ -952,7 +952,7 @@ export default function Settings() {
                                     </div>
                                 </div>
 
-                                <div className="space-y-3 pt-4 border-t border-border/30">
+                                <div className="space-y-3 pt-4">
                                     <div className="flex items-center justify-between">
                                         <label className="text-sm font-medium">{t('settingsPage.save.outputFolders.scene.label', 'Scene Folder')}</label>
                                         {isAbsoluteScenePath && (
@@ -998,7 +998,7 @@ export default function Settings() {
                                     </div>
                                 </div>
 
-                                <div className="space-y-3 pt-4 border-t border-border/30">
+                                <div className="space-y-3 pt-4">
                                     <div className="flex items-center justify-between">
                                         <label className="text-sm font-medium">{t('settingsPage.save.outputFolders.styleLab.label', 'Style Lab Folder')}</label>
                                         {isAbsoluteStyleLabPath && (
@@ -1044,7 +1044,7 @@ export default function Settings() {
                                     </div>
                                 </div>
 
-                                <div className="space-y-3 pt-4 border-t border-border/30">
+                                <div className="space-y-3 pt-4">
                                     <div className="flex items-center justify-between">
                                         <label className="text-sm font-medium">{t('settingsPage.save.outputFolders.tools.label', 'Tools Folder')}</label>
                                         {isAbsoluteToolsPath && (
@@ -1090,7 +1090,7 @@ export default function Settings() {
                                     </div>
                                 </div>
 
-                                <div className="flex items-center justify-between pt-4 border-t border-border/30">
+                                <div className="flex items-center justify-between pt-4">
                                     <div className="space-y-0.5">
                                         <label className="text-sm font-medium">{t('settingsPage.save.autoSave')}</label>
                                         <p className="text-xs text-muted-foreground">
@@ -1105,7 +1105,7 @@ export default function Settings() {
                             </div>
 
                             {/* Library Path Setting */}
-                            <div className="space-y-5 rounded-panel border border-border bg-card p-4 sm:p-5">
+                            <div className="space-y-5 rounded-panel bg-card p-5">
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between">
                                         <label className="text-sm font-medium">{t('settingsPage.library.folder', 'Library Folder')}</label>
@@ -1157,7 +1157,7 @@ export default function Settings() {
                             </div>
 
                             {/* Image Format Setting */}
-                            <div className="space-y-4 rounded-panel border border-border bg-card p-4 sm:p-5">
+                            <div className="space-y-4 rounded-panel bg-card p-5">
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="space-y-0.5">
                                         <label className="text-sm font-medium">{t('settingsPage.save.imageFormat.title', 'Image Format')}</label>
@@ -1193,7 +1193,7 @@ export default function Settings() {
                             </div>
 
                             {/* Enable/Disable Shortcuts */}
-                            <div className="rounded-panel border border-border bg-card p-4 sm:p-5">
+                            <div className="rounded-panel bg-card p-5">
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <label className="text-sm font-medium">{t('settingsPage.shortcuts.enable', '단축키 활성화')}</label>
@@ -1209,7 +1209,7 @@ export default function Settings() {
                             </div>
 
                             {/* Shortcut Bindings */}
-                            <div className="space-y-4 rounded-panel border border-border bg-card p-4 sm:p-5">
+                            <div className="space-y-4 rounded-panel bg-card p-5">
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-sm font-medium">{t('settingsPage.shortcuts.bindings', '키 바인딩')}</h3>
                                     <Button variant="ghost" size="sm" className="h-11" onClick={resetAllBindings}>
@@ -1331,7 +1331,7 @@ export default function Settings() {
                             </div>
                             
                             {/* Export/Import */}
-                            <div className="space-y-5 rounded-panel border border-border bg-card p-4 sm:p-5">
+                            <div className="space-y-5 rounded-panel bg-card p-5">
                                 <div className="space-y-4">
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div className="space-y-1">
@@ -1354,7 +1354,7 @@ export default function Settings() {
                                     </div>
                                 </div>
                                 
-                                <div className="border-t border-border/30 pt-6">
+                                <div className="pt-6">
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                         <div className="space-y-1">
                                             <label className="text-sm font-medium flex items-center gap-2">
@@ -1378,7 +1378,7 @@ export default function Settings() {
                                 
                                 {/* Last Backup Time */}
                                 {lastBackupTime && (
-                                    <div className="border-t border-border/30 pt-4">
+                                    <div className="pt-4">
                                         <p className="text-xs text-muted-foreground">
                                             {t('settingsPage.backup.lastBackup')}: {new Date(lastBackupTime).toLocaleString()}
                                         </p>
@@ -1387,7 +1387,7 @@ export default function Settings() {
                             </div>
 
                             {/* Disk Auto-backup */}
-                            <div className="space-y-4 rounded-panel border border-border bg-card p-4 sm:p-5">
+                            <div className="space-y-4 rounded-panel bg-card p-5">
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="space-y-1">
                                         <label className="text-sm font-medium flex items-center gap-2">
@@ -1423,14 +1423,14 @@ export default function Settings() {
                                     </div>
                                 </div>
                                 {lastAutoBackupTime && (
-                                    <p className="text-xs text-muted-foreground border-t border-border/30 pt-3">
+                                    <p className="pt-3 text-xs text-muted-foreground">
                                         {t('settingsPage.backup.lastAutoSnapshot')}: {new Date(lastAutoBackupTime).toLocaleString()}
                                     </p>
                                 )}
                             </div>
 
                             {/* Store Snapshots */}
-                            <div className="space-y-4 rounded-panel border border-border bg-card p-4 sm:p-5">
+                            <div className="space-y-4 rounded-panel bg-card p-5">
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                     <div className="space-y-1">
                                         <label className="text-sm font-medium flex items-center gap-2">
@@ -1452,7 +1452,7 @@ export default function Settings() {
                             </div>
                             
                             {/* Data Sizes */}
-                            <div className="space-y-4 rounded-panel border border-border bg-card p-4 sm:p-5">
+                            <div className="space-y-4 rounded-panel bg-card p-5">
                                 <div className="flex items-center justify-between">
                                     <h4 className="text-sm font-medium flex items-center gap-2">
                                         <HardDrive className="h-4 w-4 text-muted-foreground" />
@@ -1483,7 +1483,7 @@ export default function Settings() {
                                             </span>
                                         </div>
                                     ))}
-                                    <div className="border-t border-border/30 pt-2 flex items-center justify-between font-medium">
+                                    <div className="flex items-center justify-between pt-2 font-medium">
                                         <span>{t('settingsPage.backup.totalSize')}</span>
                                         <span className="font-mono">{formatSize(totalSize)}</span>
                                     </div>
@@ -1491,7 +1491,7 @@ export default function Settings() {
                             </div>
                             
                             {/* Warning */}
-                            <div className="rounded-panel border border-warning/30 bg-warning/10 p-4">
+                            <div className="rounded-panel bg-warning/10 p-4">
                                 <div className="flex gap-3">
                                     <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
                                     <div className="text-sm text-warning">
@@ -1649,7 +1649,7 @@ function ShortcutRow({ action, binding, allBindings, isEditing, recordedBinding,
 
             {/* 충돌 경고 */}
             {conflictAction && recordedBinding && (
-                <div className="flex flex-col gap-3 rounded-control border border-destructive/20 bg-destructive/10 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col gap-3 rounded-control bg-destructive/10 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2 text-sm text-destructive">
                         <Info className="h-4 w-4" />
                         <span>

@@ -42,8 +42,6 @@ import {
     Film,
     Puzzle,
     Users,
-    ChevronDown,
-    ChevronUp,
 } from 'lucide-react'
 import GeminiIcon from '@/assets/gemini-color.svg'
 import { useGenerationStore, AVAILABLE_MODELS } from '@/stores/generation-store'
@@ -74,6 +72,7 @@ const SAMPLERS = [
 ]
 
 const SCHEDULERS = ['native', 'karras', 'exponential', 'polyexponential']
+type PromptSlot = 'base' | 'additional' | 'detail' | 'negative'
 
 export function PromptPanel() {
     const { t } = useTranslation()
@@ -141,16 +140,9 @@ export function PromptPanel() {
     const setUcPreset = useGenerationStore(state => state.setUcPreset)
     const setBatchCount = useGenerationStore(state => state.setBatchCount)
 
-    // Zustand 선택적 구독 - settingsStore
+    // Font size remains a shared display preference. Legacy collapse flags stay
+    // persisted for sync compatibility, while the command surface uses one local slot.
     const promptFontSize = useSettingsStore(state => state.promptFontSize)
-    const basePromptCollapsed = useSettingsStore(state => state.basePromptCollapsed)
-    const setBasePromptCollapsed = useSettingsStore(state => state.setBasePromptCollapsed)
-    const additionalPromptCollapsed = useSettingsStore(state => state.additionalPromptCollapsed)
-    const setAdditionalPromptCollapsed = useSettingsStore(state => state.setAdditionalPromptCollapsed)
-    const detailPromptCollapsed = useSettingsStore(state => state.detailPromptCollapsed)
-    const setDetailPromptCollapsed = useSettingsStore(state => state.setDetailPromptCollapsed)
-    const negativePromptCollapsed = useSettingsStore(state => state.negativePromptCollapsed)
-    const setNegativePromptCollapsed = useSettingsStore(state => state.setNegativePromptCollapsed)
 
     // Zustand 선택적 구독 - characterPromptStore
     const characterCount = useCharacterPromptStore(state => state.characters.filter(c => c.enabled).length)
@@ -160,6 +152,7 @@ export function PromptPanel() {
     const [characterPanelOpen, setCharacterPanelOpen] = useState(false)
     const [imageRefDialogOpen, setImageRefDialogOpen] = useState(false)
     const [parameterDialogOpen, setParameterDialogOpen] = useState(false)
+    const [activePromptSlot, setActivePromptSlot] = useState<PromptSlot>('base')
 
     // 전역 단축키 이벤트 수신
     useEffect(() => {
@@ -237,17 +230,49 @@ export function PromptPanel() {
         }
     }, [isConflict, isSceneMode, rotationActive, sceneIsGenerating, sceneIsCancelling, cancelSceneGeneration, queueExecutionAuthority, sceneQueueCount, startNewGenerationSession, isGenerating, t])
 
+    const promptSlots = [
+        {
+            id: 'base' as const,
+            label: t('prompt.base'),
+            placeholder: t('prompt.basePlaceholder'),
+            value: basePrompt,
+            setValue: setBasePrompt,
+        },
+        {
+            id: 'additional' as const,
+            label: t('prompt.additional'),
+            placeholder: t('prompt.additionalPlaceholder'),
+            value: additionalPrompt,
+            setValue: setAdditionalPrompt,
+        },
+        {
+            id: 'detail' as const,
+            label: t('prompt.detail'),
+            placeholder: t('prompt.detailPlaceholder'),
+            value: detailPrompt,
+            setValue: setDetailPrompt,
+        },
+        {
+            id: 'negative' as const,
+            label: t('prompt.negative'),
+            placeholder: t('prompt.negativePlaceholder'),
+            value: negativePrompt,
+            setValue: setNegativePrompt,
+        },
+    ]
+    const activePrompt = promptSlots.find(slot => slot.id === activePromptSlot) ?? promptSlots[0]
+
     return (
-        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-2">
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden p-5">
             {/* Source Image Panel (I2I/Inpaint Mode) */}
             <SourceImagePanel />
 
             {/* This is the only scrolling region in the prompt sheet. The action
                 rail and generate control below remain reachable on short Android
                 viewports while every prompt field stays available. */}
-            <div className="relative mb-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain pr-1">
+            <div className="relative mb-4 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain pr-1">
                 {isMainMode && (
-                    <div className="flex flex-none flex-col gap-2">
+                    <div className="flex flex-none flex-col gap-3">
                         <RecipeSelector />
                         <ResolvedPlanPanel />
                     </div>
@@ -259,161 +284,57 @@ export function PromptPanel() {
                     onOpenChange={setCharacterPanelOpen}
                 />
 
-                {/* Base Prompt - Collapsible */}
-                <div className={cn(
-                    "flex flex-none flex-col overflow-hidden",
-                    basePromptCollapsed ? "" : "min-h-36"
-                )}>
-                    <button
-                        type="button"
-                        onClick={() => setBasePromptCollapsed(!basePromptCollapsed)}
-                        className="flex h-11 shrink-0 items-center gap-2 rounded-control px-2 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        aria-expanded={!basePromptCollapsed}
-                        aria-controls="prompt-base-field"
-                    >
-                        {basePromptCollapsed ? (
-                            <ChevronDown className="h-3 w-3" />
-                        ) : (
-                            <ChevronUp className="h-3 w-3" />
-                        )}
-                        {t('prompt.base')}
-                        {basePromptCollapsed && basePrompt && (
-                            <span className="text-muted-foreground font-normal truncate max-w-[200px]">
-                                - {basePrompt.split(',')[0]}...
-                            </span>
-                        )}
-                    </button>
-                    {!basePromptCollapsed && (
-                        <div id="prompt-base-field" className="min-h-0 flex-1">
-                            <AutocompleteTextarea
-                                placeholder={t('prompt.basePlaceholder')}
-                                value={basePrompt}
-                                onChange={(e) => setBasePrompt(e.target.value)}
-                                className="h-full min-h-24 resize-none rounded-control"
-                                style={{ fontSize: `${promptFontSize}px` }}
-                            />
-                        </div>
-                    )}
-                </div>
-
-                {/* Additional Prompt - Collapsible */}
-                <div className={cn(
-                    "flex flex-none flex-col overflow-hidden",
-                    additionalPromptCollapsed ? "" : "min-h-32"
-                )}>
-                    <button
-                        type="button"
-                        onClick={() => setAdditionalPromptCollapsed(!additionalPromptCollapsed)}
-                        className="flex h-11 shrink-0 items-center gap-2 rounded-control px-2 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        aria-expanded={!additionalPromptCollapsed}
-                        aria-controls="prompt-additional-field"
-                    >
-                        {additionalPromptCollapsed ? (
-                            <ChevronDown className="h-3 w-3" />
-                        ) : (
-                            <ChevronUp className="h-3 w-3" />
-                        )}
-                        {t('prompt.additional')}
-                        {additionalPromptCollapsed && additionalPrompt && (
-                            <span className="text-muted-foreground font-normal truncate max-w-[200px]">
-                                - {additionalPrompt.split(',')[0]}...
-                            </span>
-                        )}
-                    </button>
-                    {!additionalPromptCollapsed && (
-                        <div id="prompt-additional-field" className="min-h-0 flex-1">
-                            <AutocompleteTextarea
-                                placeholder={t('prompt.additionalPlaceholder')}
-                                value={additionalPrompt}
-                                onChange={(e) => setAdditionalPrompt(e.target.value)}
-                                className="h-full min-h-20 resize-none rounded-control"
-                                style={{ fontSize: `${promptFontSize}px` }}
-                            />
-                        </div>
-                    )}
-                </div>
-
-                {/* Detail Prompt - Collapsible */}
-                <div className={cn(
-                    "flex flex-none flex-col overflow-hidden",
-                    detailPromptCollapsed ? "" : "min-h-32"
-                )}>
-                    <button
-                        type="button"
-                        onClick={() => setDetailPromptCollapsed(!detailPromptCollapsed)}
-                        className="flex h-11 shrink-0 items-center gap-2 rounded-control px-2 text-left text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        aria-expanded={!detailPromptCollapsed}
-                        aria-controls="prompt-detail-field"
-                    >
-                        {detailPromptCollapsed ? (
-                            <ChevronDown className="h-3 w-3" />
-                        ) : (
-                            <ChevronUp className="h-3 w-3" />
-                        )}
-                        {t('prompt.detail')}
-                        {detailPromptCollapsed && detailPrompt && (
-                            <span className="text-muted-foreground font-normal truncate max-w-[200px]">
-                                - {detailPrompt.split(',')[0]}...
-                            </span>
-                        )}
-                    </button>
-                    {!detailPromptCollapsed && (
-                        <div id="prompt-detail-field" className="min-h-0 flex-1">
-                            <AutocompleteTextarea
-                                placeholder={t('prompt.detailPlaceholder')}
-                                value={detailPrompt}
-                                onChange={(e) => setDetailPrompt(e.target.value)}
-                                className="h-full min-h-20 resize-none rounded-control"
-                                style={{ fontSize: `${promptFontSize}px` }}
-                            />
-                        </div>
-                    )}
-                </div>
-
-                {/* Negative Prompt - 20% (collapsible, collapses downward) */}
-                <div className={cn(
-                    "flex flex-none flex-col overflow-hidden",
-                    negativePromptCollapsed ? "" : "min-h-32"
-                )}>
-                    <button
-                        type="button"
-                        onClick={() => setNegativePromptCollapsed(!negativePromptCollapsed)}
-                        className="flex h-11 shrink-0 items-center gap-2 rounded-control px-2 text-left text-xs font-medium text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        aria-expanded={!negativePromptCollapsed}
-                        aria-controls="prompt-negative-field"
-                    >
-                        {negativePromptCollapsed ? (
-                            <ChevronDown className="h-3 w-3" />
-                        ) : (
-                            <ChevronUp className="h-3 w-3" />
-                        )}
-                        {t('prompt.negative')}
-                        {negativePromptCollapsed && negativePrompt && (
-                            <span className="text-muted-foreground font-normal truncate max-w-[200px]">
-                                - {negativePrompt.split(',')[0]}...
-                            </span>
-                        )}
-                    </button>
-                    {!negativePromptCollapsed && (
-                        <div id="prompt-negative-field" className="min-h-0 flex-1">
-                            <AutocompleteTextarea
-                                placeholder={t('prompt.negativePlaceholder')}
-                                value={negativePrompt}
-                                onChange={(e) => setNegativePrompt(e.target.value)}
-                                className="h-full min-h-20 resize-none rounded-control border-destructive/30"
-                                style={{ fontSize: `${promptFontSize}px` }}
-                            />
-                        </div>
-                    )}
+                {/* A single command surface keeps every prompt layer one tap away
+                    without stacking four competing card headers and editors. */}
+                <div className="flex min-h-40 flex-none flex-col gap-2 rounded-panel bg-canvas p-2">
+                    <div className="grid grid-cols-4 gap-1" role="tablist" aria-label={t('prompt.title', '프롬프트')}>
+                        {promptSlots.map(slot => {
+                            const isActive = slot.id === activePrompt.id
+                            return (
+                                <button
+                                    key={slot.id}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={isActive}
+                                    aria-controls="prompt-command-editor"
+                                    onClick={() => setActivePromptSlot(slot.id)}
+                                    className={cn(
+                                        'relative flex h-11 min-w-0 items-center justify-center rounded-control px-2 text-xs font-medium transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                        isActive
+                                            ? slot.id === 'negative' ? 'bg-destructive/10 text-destructive' : 'bg-accent text-primary'
+                                            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                                    )}
+                                >
+                                    <span className="truncate">{slot.label}</span>
+                                    {slot.value && !isActive && (
+                                        <span className="absolute bottom-1.5 h-1 w-1 rounded-full bg-current opacity-60" aria-hidden="true" />
+                                    )}
+                                </button>
+                            )
+                        })}
+                    </div>
+                    <div id="prompt-command-editor" role="tabpanel" className="min-h-28 flex-1">
+                        <AutocompleteTextarea
+                            key={activePrompt.id}
+                            placeholder={activePrompt.placeholder}
+                            value={activePrompt.value}
+                            onChange={(event) => activePrompt.setValue(event.target.value)}
+                            className={cn(
+                                'h-full min-h-28 resize-none rounded-control bg-card',
+                                activePrompt.id === 'negative' && 'border-destructive/30',
+                            )}
+                            style={{ fontSize: `${promptFontSize}px` }}
+                        />
+                    </div>
                 </div>
             </div>
 
-            {/* Quick Actions & Parameters Button */}
-            <div className="mb-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.75rem_2.75rem_2.75rem] gap-2 min-[480px]:flex">
+            {/* Prompt helpers share a quiet tonal rail; dialogs carry their own hierarchy once opened. */}
+            <div className="mb-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_2.75rem_2.75rem_2.75rem] gap-1 rounded-panel bg-canvas p-1 min-[480px]:flex">
                 <CharacterSettingsDialog open={imageRefDialogOpen} onOpenChange={setImageRefDialogOpen} />
                 {/* Character Prompt Toggle Button */}
                 <Button
-                    variant={characterPanelOpen ? "default" : "outline"}
+                    variant={characterPanelOpen ? "default" : "ghost"}
                     size="sm"
                     className={cn(
                         "relative h-11 min-w-0 rounded-control px-2 text-xs",
@@ -425,7 +346,7 @@ export function PromptPanel() {
                     <span className="min-w-0 truncate">{t('prompt.character', '캐릭터')}</span>
                     {characterCount > 0 && (
                         <div className={cn(
-                            "absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-md px-1 py-0.5 text-[11px] font-bold leading-none shadow-sm",
+                            "absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-md px-1 py-0.5 text-[11px] font-bold leading-none",
                             characterPanelOpen
                                 ? "bg-primary-foreground text-primary"
                                 : "bg-primary text-primary-foreground"
@@ -436,7 +357,7 @@ export function PromptPanel() {
                 </Button>
                 {/* Fragment Prompt Button */}
                 <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     className="h-11 w-11 min-w-0 rounded-control px-0 text-xs min-[480px]:w-auto min-[480px]:flex-1 min-[480px]:px-2"
                     onClick={() => setFragmentDialogOpen(true)}
@@ -448,7 +369,7 @@ export function PromptPanel() {
                 {/* AI Prompt Generator Button */}
                 <Tip content={t('promptGenerator.desc', 'Gemini AI로 프롬프트 생성')}>
                     <Button
-                        variant="outline"
+                        variant="ghost"
                         size="icon"
                         className="h-11 w-11 shrink-0 rounded-control hover:bg-accent"
                         onClick={() => setPromptGenOpen(true)}
@@ -460,7 +381,7 @@ export function PromptPanel() {
                 {/* Parameter Settings Dialog */}
                 <Dialog open={parameterDialogOpen} onOpenChange={setParameterDialogOpen}>
                     <DialogTrigger asChild>
-                        <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-control" aria-label={t('parameters.title')}>
+                        <Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 rounded-control" aria-label={t('parameters.title')}>
                             <SlidersHorizontal className="h-4 w-4" />
                         </Button>
                     </DialogTrigger>
@@ -517,7 +438,7 @@ export function PromptPanel() {
                                     <Button
                                         variant="outline"
                                         size="icon"
-                                        className={cn("h-11 w-11 shrink-0 rounded-control", seedLocked && 'border-primary bg-primary/10 text-primary')}
+                                        className={cn("h-11 w-11 shrink-0 rounded-control", seedLocked && 'bg-primary/10 text-primary')}
                                         onClick={() => setSeedLocked(!seedLocked)}
                                         aria-label={seedLocked ? t('settings.unlockSeed', '시드 잠금 해제') : t('settings.lockSeed', '시드 잠금')}
                                     >

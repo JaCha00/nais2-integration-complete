@@ -89,11 +89,11 @@ export function CompositionInspector({
 
     return (
         <aside
-            className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden rounded-panel border border-border bg-card', className)}
+            className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden rounded-panel bg-card', className)}
             aria-labelledby="composition-inspector-title"
             data-testid="composition-inspector"
         >
-            <header className="flex min-h-11 min-w-0 items-center justify-between gap-2 border-b border-border px-3">
+            <header className="flex min-h-11 min-w-0 items-center justify-between gap-2 bg-muted/20 px-3">
                 <h2 id="composition-inspector-title" className="min-w-0 truncate text-sm font-semibold" title={title ?? labels.title}>
                     {title ?? labels.title}
                 </h2>
@@ -144,10 +144,10 @@ export function CompositionInspector({
                             </section>
                         )}
 
-                        {children && <div className="min-w-0 border-t border-border p-3">{children}</div>}
+                        {children && <div className="min-w-0 p-3 pt-5">{children}</div>}
 
                         {overrideDiff.length > 0 && (
-                            <section className="min-w-0 border-t border-border p-3" aria-labelledby="composition-override-diff-title">
+                            <section className="min-w-0 p-3 pt-5" aria-labelledby="composition-override-diff-title">
                                 <div className="flex min-w-0 items-center justify-between gap-2">
                                     <h3 id="composition-override-diff-title" className="text-sm font-semibold">{labels.overrideDiff}</h3>
                                     <span className="font-mono text-xs text-muted-foreground">{changedOverrides.length}</span>
@@ -173,7 +173,7 @@ export function CompositionInspector({
                         )}
 
                         {resolvedPlan && (
-                            <section className="min-w-0 border-t border-border p-3">
+                            <section className="min-w-0 p-3 pt-5">
                                 <h3 className="text-sm font-semibold">{labels.resolvedPlan}</h3>
                                 <p className="mt-2 line-clamp-3 whitespace-pre-wrap break-words text-xs">{resolvedPlan.positivePrompt || '—'}</p>
                                 <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">{resolvedPlan.planHash.digest}</p>
@@ -184,7 +184,7 @@ export function CompositionInspector({
             </div>
 
             {(onEditModule && module || onResetOverride || onOpenResolvedPlan) && (
-                <footer className="grid min-w-0 gap-2 border-t border-border p-2 sm:grid-cols-2">
+                <footer className="grid min-w-0 gap-2 bg-muted/20 p-2 sm:grid-cols-2">
                     {onEditModule && module && (
                         <Button type="button" variant="outline" disabled={disabled || module.missing} onClick={() => onEditModule(module.id)}>
                             <Edit3 className="mr-2 h-4 w-4" aria-hidden="true" />

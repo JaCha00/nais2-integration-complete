@@ -33,16 +33,16 @@ SheetOverlay.displayName = SheetPrimitive.Overlay.displayName
 
 // DESIGN.md binds every sheet edge to all four safe-area insets so Android landscape cannot clip controls.
 const sheetVariants = cva(
-    "fixed z-50 gap-4 border-border bg-card pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(1rem,env(safe-area-inset-top))] text-card-foreground shadow-panel transition duration-overlay ease-standard data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-overlay data-[state=open]:duration-overlay motion-reduce:animate-none motion-reduce:transition-none",
+    "fixed z-50 gap-4 bg-card pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(1rem,env(safe-area-inset-top))] text-card-foreground shadow-overlay transition duration-overlay ease-standard data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:duration-overlay data-[state=open]:duration-overlay motion-reduce:animate-none motion-reduce:transition-none",
     {
         variants: {
             side: {
-                top: "inset-x-0 top-0 border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
+                top: "inset-x-0 top-0 data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
                 bottom:
-                    "inset-x-0 bottom-0 border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
-                left: "inset-y-0 left-0 h-full w-full max-w-none border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left",
+                    "inset-x-0 bottom-0 data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+                left: "inset-y-0 left-0 h-full w-full max-w-none data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left",
                 right:
-                    "inset-y-0 right-0 h-full w-full max-w-none border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
+                    "inset-y-0 right-0 h-full w-full max-w-none data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
             },
         },
         defaultVariants: {
@@ -65,7 +65,11 @@ const SheetContent = React.forwardRef<
         <SheetOverlay />
         <SheetPrimitive.Content
             ref={ref}
-            className={cn(sheetVariants({ side }), className)}
+            className={cn(
+                sheetVariants({ side }),
+                isAndroidRuntime && "android-landscape-safe-inline",
+                className,
+            )}
             // Portals do not inherit the mobile shell padding. Android OEM WebViews may also report
             // zero env() insets, so the common sheet boundary keeps all sheet actions above system bars.
             style={isAndroidRuntime ? {
@@ -78,7 +82,8 @@ const SheetContent = React.forwardRef<
             <SheetPrimitive.Close
                 aria-label={closeLabel}
                 className={cn(
-                    "absolute right-[max(1rem,env(safe-area-inset-right))] z-10 inline-flex h-11 w-11 items-center justify-center rounded-control border border-transparent text-muted-foreground transition-colors duration-standard hover:border-border hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:pointer-events-none disabled:opacity-50",
+                    "absolute right-[max(1rem,env(safe-area-inset-right))] z-10 inline-flex h-11 w-11 items-center justify-center rounded-control bg-muted/80 text-foreground transition-colors duration-standard hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card disabled:pointer-events-none disabled:opacity-50",
+                    isAndroidRuntime && "android-landscape-safe-close",
                     isAndroidRuntime
                         ? "top-[max(1.5rem,env(safe-area-inset-top))]"
                         : "top-[max(1rem,env(safe-area-inset-top))]",

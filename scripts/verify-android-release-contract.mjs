@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { patchAndroidSigning } from './patch-android-signing.mjs'
+import { patchAndroidBackDispatcher, patchAndroidSigning } from './patch-android-signing.mjs'
 import { resolveAndroidUpdateBaseline } from './android-update-baseline.mjs'
 
 const root = process.cwd()
@@ -193,6 +193,10 @@ assert.ok(!localRelease.includes('WriteAllText($keystorePropertiesPath'))
 const prepareRelease = read('scripts/prepare-android-release.mjs')
 assert.ok(!prepareRelease.includes("requiredEnvironment('ANDROID_KEY_PASSWORD')"))
 assert.ok(!prepareRelease.includes('writeFileSync'))
+assert.ok(prepareRelease.includes('patchAndroidBackDispatcher'))
+
+const localSignedBuild = read('scripts/build-android-signed-local.ps1')
+assert.ok(localSignedBuild.includes('scripts\\patch-android-signing.mjs'))
 
 const temporaryRoot = mkdtempSync(join(tmpdir(), 'nais-android-signing-'))
 try {
@@ -227,6 +231,22 @@ android {
     assert.equal((twice.match(/NAIS_ANDROID_DEBUG_ID/g) ?? []).length, 1)
     assert.equal((twice.match(/naisUserSigningConfig\?\.let \{ signingConfig = it \}/g) ?? []).length, 2)
     assert.doesNotMatch(twice, /applicationIdSuffix\s*=/)
+
+    const manifestFile = join(temporaryRoot, 'AndroidManifest.xml')
+    writeFileSync(
+        manifestFile,
+        `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="NAIS2" />
+</manifest>
+`,
+    )
+    assert.equal(patchAndroidBackDispatcher(manifestFile), true)
+    const patchedManifest = readFileSync(manifestFile, 'utf8')
+    assert.equal(patchAndroidBackDispatcher(manifestFile), false)
+    assert.equal(
+        (patchedManifest.match(/android:enableOnBackInvokedCallback="true"/g) ?? []).length,
+        1,
+    )
 } finally {
     rmSync(temporaryRoot, { recursive: true, force: true })
 }

@@ -137,7 +137,7 @@ export function CompositionCommandBar({
     return (
         <header
             className={cn(
-                'grid min-w-0 gap-2 rounded-panel border border-border bg-card p-2',
+                'grid min-w-0 gap-2 rounded-panel bg-card p-2',
                 'md:grid-cols-2 xl:grid-cols-[minmax(10rem,0.7fr)_minmax(14rem,1.25fr)_auto_auto_minmax(9rem,0.6fr)_auto] xl:items-center',
                 className,
             )}
@@ -147,7 +147,7 @@ export function CompositionCommandBar({
             <CommandSelect control={{ ...mode, disabled: disabled || mode.disabled }} label={labels.mode} />
             <CommandSelect control={{ ...recipe, disabled: disabled || recipe.disabled }} label={labels.recipe} />
 
-            <div className="flex min-h-11 min-w-0 items-center justify-between gap-2 border-y border-border px-2 md:border-y-0 md:border-l">
+            <div className="flex min-h-11 min-w-0 items-center justify-between gap-2 px-2">
                 <ValidationState validation={validation} />
                 {cost && (
                     <span

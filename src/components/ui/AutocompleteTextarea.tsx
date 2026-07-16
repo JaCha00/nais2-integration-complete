@@ -550,7 +550,7 @@ export function AutocompleteTextarea({
             {isVisible && suggestions.length > 0 && createPortal(
                 <div
                     ref={listRef}
-                    className="fixed z-[9999] w-64 overflow-hidden rounded-panel border border-border bg-popover text-popover-foreground shadow-overlay motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95"
+                    className="fixed z-[9999] w-64 overflow-hidden rounded-panel border-0 bg-popover text-popover-foreground shadow-overlay motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95"
                     role="listbox"
                     aria-label="Prompt suggestions"
                     style={{

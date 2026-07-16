@@ -134,11 +134,11 @@ export function CharacterLayoutEditor({
 
     return (
         <section
-            className={cn('min-w-0 rounded-panel border border-border bg-card', className)}
+            className={cn('min-w-0 rounded-panel bg-card', className)}
             aria-labelledby="composition-character-layout-title"
             data-testid="composition-character-layout"
         >
-            <header className="flex min-h-11 min-w-0 items-center gap-2 border-b border-border px-3">
+            <header className="flex min-h-11 min-w-0 items-center gap-2 bg-muted/20 px-3">
                 <Sparkles className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
                 <h3 id="composition-character-layout-title" className="min-w-0 truncate text-sm font-semibold" title={title ?? labels.title}>
                     {title ?? labels.title}

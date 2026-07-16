@@ -98,7 +98,7 @@ const HistoryImageItem = memo(function HistoryImageItem({
         <ContextMenu>
             <ContextMenuTrigger asChild>
                 <div
-                    className="group relative aspect-square cursor-pointer overflow-hidden rounded-control border border-border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="thumb-bare group relative aspect-square cursor-pointer overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
                     onClick={() => onImageClick(image)}
                     onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') {
@@ -108,7 +108,7 @@ const HistoryImageItem = memo(function HistoryImageItem({
                     }}
                     role="button"
                     tabIndex={0}
-                    aria-label={t('history.openImage', '기록 이미지 열기') + ` ${index + 1}`}
+                    aria-label={t('history.openImage', { index: index + 1, defaultValue: `이미지 ${index + 1}번` })}
                 >
                     {localThumbnail ? (
                         <img
@@ -128,8 +128,7 @@ const HistoryImageItem = memo(function HistoryImageItem({
                                     height: 80px;
                                     border-radius: 12px;
                                     overflow: hidden;
-                                    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-                                    border: 2px solid rgba(255,255,255,0.3);
+                                    box-shadow: 0 16px 48px rgba(0,0,0,0.28);
                                     position: fixed;
                                     top: -200px;
                                     left: -200px;
@@ -172,18 +171,18 @@ const HistoryImageItem = memo(function HistoryImageItem({
                     <Button
                         variant="destructive"
                         size="icon"
-                        className="absolute right-1 top-1 h-11 w-11 opacity-100 shadow-panel sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
+                        className="absolute right-1 top-1 h-11 w-11 opacity-100 transition-opacity duration-fast sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
                         onClick={(e) => onDelete(image, e)}
                         aria-label={t('actions.delete', '삭제')}
                     >
                         <Trash2 className="h-4 w-4" />
                     </Button>
-                    <div className="absolute bottom-1 left-1 flex gap-1" aria-hidden="true">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-control border border-border bg-card text-foreground shadow-panel">
+                    <div className="absolute bottom-1 left-1 flex gap-1 opacity-100 transition-opacity duration-fast sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100" aria-hidden="true">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-control bg-scrim/70 text-white">
                             {getTypeIcon(image.type)}
                         </div>
                         {image.isTemporary && (
-                            <div className="flex h-6 w-6 items-center justify-center rounded-control border border-border bg-card shadow-panel">
+                            <div className="flex h-6 w-6 items-center justify-center rounded-control bg-scrim/70">
                                 <Zap className="h-3 w-3 text-warning" />
                             </div>
                         )}
@@ -990,14 +989,14 @@ export function HistoryPanel() {
         <div className="relative flex h-full min-h-0 flex-col">
             {sourceEditPreparing && (
                 <div className="absolute inset-0 z-20 flex items-center justify-center bg-scrim/70" role="status" aria-live="polite">
-                    <div className="flex items-center gap-2 rounded-control border border-border bg-popover px-4 py-3 text-sm text-popover-foreground shadow-panel">
+                    <div className="flex items-center gap-2 rounded-control bg-popover px-4 py-3 text-sm text-popover-foreground shadow-overlay">
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                         {t('credentialVault.status.unlocking')}
                     </div>
                 </div>
             )}
             {/* Header */}
-            <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
+            <div className="flex min-h-14 shrink-0 items-center justify-between px-5 py-3">
                 <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
                     <FolderOpen className="h-4 w-4 text-primary" />
                     {t('history.title')}
@@ -1021,16 +1020,21 @@ export function HistoryPanel() {
             </div>
 
             {/* History Grid */}
-            <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
+            <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 pt-2">
                 {savedImages.length === 0 ? (
                     <div className="flex h-full min-h-48 flex-col items-center justify-center px-4 text-center text-muted-foreground" role="status" aria-live="polite">
-                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-panel border border-border bg-muted">
+                        <div className="mb-3 flex h-12 w-12 items-center justify-center text-muted-foreground/70">
                             {isLoading ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Clock className="h-5 w-5" />}
                         </div>
                         <span className="text-sm">{isLoading ? t('common.loading', '불러오는 중…') : t('history.empty')}</span>
+                        {!isLoading && (
+                            <span className="mt-1 max-w-48 text-xs leading-5 text-muted-foreground/80">
+                                {t('history.emptyHint', '프롬프트를 열어 첫 이미지를 만들어 보세요.')}
+                            </span>
+                        )}
                     </div>
                 ) : (
-                    <div className="grid grid-cols-2 gap-2 2xl:grid-cols-1">
+                    <div className="grid grid-cols-2 gap-3 2xl:grid-cols-1">
                         {savedImages.map((image, index) => (
                             <HistoryImageItem
                                 key={image.path}

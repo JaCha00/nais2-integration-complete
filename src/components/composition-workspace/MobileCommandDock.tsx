@@ -52,12 +52,13 @@ export function MobileCommandDock({
     const dock = (
         <nav
             className={cn(
-                'fixed inset-x-0 bottom-0 z-40 grid min-w-0 grid-cols-[2.75rem_2.75rem_2.75rem_minmax(0,1fr)] gap-1 border-t border-border bg-card md:hidden',
+                'fixed inset-x-0 bottom-0 z-40 grid min-w-0 grid-cols-[2.75rem_2.75rem_2.75rem_minmax(0,1fr)] gap-1 bg-card md:hidden',
                 // Android OEM WebViews can expose a zero env() inset under three-button navigation;
                 // the larger runtime-only floor keeps every command target above the system bar.
                 isAndroidRuntime
                     ? 'pb-[max(3.5rem,env(safe-area-inset-bottom))]'
                     : 'pb-[max(0.5rem,env(safe-area-inset-bottom))]',
+                isAndroidRuntime && 'android-landscape-safe-inline',
                 'pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] pt-2',
                 className,
             )}

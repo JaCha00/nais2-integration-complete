@@ -153,8 +153,8 @@ function SortablePresetRow({ preset, isActive, listeners, attributes, setNodeRef
             ref={setNodeRef}
             style={style}
             className={cn(
-                "flex min-h-11 items-center gap-2 rounded-control border px-2 py-1 transition-colors duration-standard",
-                isActive ? "border-primary/40 bg-accent text-accent-foreground" : "border-border bg-card",
+                "flex min-h-11 items-center gap-2 rounded-control px-2 py-1 transition-colors duration-standard",
+                isActive ? "bg-accent text-accent-foreground" : "bg-muted/30 hover:bg-muted/60",
                 isDragging && "opacity-50"
             )}
         >
@@ -905,7 +905,7 @@ export default function SceneMode() {
             conflict={conflict}
             overrideDiff={overrideDiff}
             inspectorChildren={(
-                <section className="border-t border-border p-3" aria-label={t('scene.queueStatus', 'Queue status')}>
+                <section className="p-3 pt-5" aria-label={t('scene.queueStatus', 'Queue status')}>
                     <dl className="grid grid-cols-2 gap-3 text-xs">
                         <div className="min-w-0">
                             <dt className="text-muted-foreground">{t('scene.sceneCount', 'Scenes')}</dt>
@@ -933,7 +933,7 @@ export default function SceneMode() {
             >
             {/* DESIGN.md responsive contract: compact groups wrap as rows so every existing command stays reachable without page-level horizontal scroll. */}
             {isEditMode ? (
-                <div className="grid min-w-0 gap-2 rounded-panel border border-primary/30 bg-card p-2 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:p-3">
+                <div className="grid min-w-0 gap-2 rounded-panel bg-accent/40 p-2 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:p-3">
                     <div className="flex min-w-0 items-center gap-2">
                         <Tip content={t('scene.exitEditMode', '편집 종료')} shortcut="Esc">
                             <Button
@@ -1207,7 +1207,7 @@ export default function SceneMode() {
                     role="status"
                     aria-live="polite"
                 >
-                    <div className="flex max-w-md items-center gap-4 rounded-panel border border-border bg-card p-6 text-card-foreground shadow-overlay">
+                    <div className="flex max-w-md items-center gap-4 rounded-panel bg-popover p-6 text-popover-foreground shadow-overlay">
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-control bg-primary text-primary-foreground">
                             <Download className="h-6 w-6" />
                         </div>
@@ -1221,7 +1221,7 @@ export default function SceneMode() {
                 </div>
             )}
 
-            <div className="grid min-w-0 gap-2 rounded-panel border border-border bg-card p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div className="grid min-w-0 gap-2 rounded-panel bg-card p-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                 <div className="flex min-w-0 items-center gap-2">
                     {isRenamingPreset ? (
                         <div className="min-w-0 flex-1">
@@ -1322,7 +1322,7 @@ export default function SceneMode() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 border-t border-border pt-2 sm:flex sm:border-l sm:border-t-0 sm:pl-2 sm:pt-0">
+                <div className="grid grid-cols-2 gap-2 pt-2 sm:flex sm:pl-2 sm:pt-0">
                     <Tip content={t('scene.thumbnailLayout', '세로/가로 썸네일 전환')}>
                         <Button
                             variant="ghost"
@@ -1356,7 +1356,7 @@ export default function SceneMode() {
                 onScroll={event => setSceneGridScrollTop(event.currentTarget.scrollTop)}
             >
                 {scenes.length === 0 ? (
-                    <div className="grid gap-4 rounded-panel border border-dashed border-border bg-canvas p-4 text-muted-foreground sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
+                    <div className="grid gap-4 rounded-panel bg-muted/20 p-4 text-muted-foreground sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
                         <ImageIcon className="h-10 w-10 text-muted-foreground" />
                         <div className="min-w-0">
                             <h3 className="text-base font-semibold text-foreground">{t('scene.noScenes')}</h3>
@@ -1409,7 +1409,7 @@ export default function SceneMode() {
                                     onClick={!isGenerating ? handleAddScene : undefined}
                                     disabled={isGenerating}
                                     className={cn(
-                                        "group flex min-w-0 flex-col items-center justify-center rounded-panel border border-dashed border-border bg-card p-4 text-muted-foreground transition-colors duration-standard hover:border-primary/50 hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45",
+                                        "group flex min-w-0 flex-col items-center justify-center rounded-panel bg-card p-4 text-muted-foreground transition-colors duration-standard hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45",
                                         thumbnailLayout === 'vertical' ? "aspect-[2/3]" : "aspect-[3/2]"
                                     )}
                                 >
@@ -1564,11 +1564,11 @@ const SceneCardItem = memo(function SceneCardItem({ scene, onClick, disabled = f
                 <div
                     style={style}
                     className={cn(
-                        "group relative flex min-w-0 flex-col overflow-hidden rounded-panel border border-border bg-card transition-colors duration-standard",
-                        !isOverlay && "hover:border-primary/40",
+                        "group relative flex min-w-0 flex-col overflow-hidden rounded-panel bg-card transition-colors duration-standard",
+                        !isOverlay && "hover:bg-accent/40",
                         isOverlay && "z-50 cursor-grabbing shadow-overlay ring-2 ring-primary",
                         disabled && "pointer-events-none opacity-80",
-                        isEditMode && isSelected && "border-primary ring-2 ring-primary/40"
+                        isEditMode && isSelected && "ring-2 ring-primary/60"
                     )}
                     onClick={(e) => { if (!isOverlay && !isEditing && !disabled) handleSceneClick(e) }}
                     {...(!isEditing && !isEditMode ? dragAttributes : {})}
@@ -1595,10 +1595,10 @@ const SceneCardItem = memo(function SceneCardItem({ scene, onClick, disabled = f
                         {isEditMode && (
                             <div className="absolute right-2 top-2 z-40">
                                 <div className={cn(
-                                    "flex h-8 w-8 items-center justify-center rounded-control border transition-colors duration-standard",
+                                    "flex h-8 w-8 items-center justify-center rounded-control transition-colors duration-standard",
                                     isSelected
-                                        ? "border-primary bg-primary text-primary-foreground"
-                                        : "border-border bg-card/90 text-muted-foreground"
+                                        ? "bg-primary text-primary-foreground"
+                                        : "bg-popover/90 text-muted-foreground"
                                 )}>
                                     {isSelected ? <Check className="h-4 w-4" /> : <Square className="h-4 w-4" />}
                                 </div>
@@ -1665,7 +1665,7 @@ const SceneCardItem = memo(function SceneCardItem({ scene, onClick, disabled = f
                         )}
                     </div>
 
-                    <div className="border-t border-border bg-card p-2">
+                    <div className="bg-muted/20 p-2">
                         {isEditing ? (
                             <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
                                 <Input
