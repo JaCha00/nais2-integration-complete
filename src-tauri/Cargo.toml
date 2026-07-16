@@ -4,7 +4,7 @@ version = "2.8.1"
 description = "NovelAI Image Studio"
 authors = ["sunakgo"]
 license = "GPL-3.0"
-repository = "https://github.com/JaCha00/nais2-integration-complete"
+repository = "https://github.com/JaCha00/nais_blue"
 edition = "2021"
 rust-version = "1.88.0"
 
