@@ -43,6 +43,11 @@ try {
     $env:ANDROID_KEY_ALIAS = 'release'
     $env:ANDROID_KEY_PASSWORD = $password
 
+    # The generated Android tree is ignored; reapply tracked signing and Back-dispatcher policy before every local APK.
+    $gradleFile = Join-Path $repo 'src-tauri\gen\android\app\build.gradle.kts'
+    & node (Join-Path $repo 'scripts\patch-android-signing.mjs') --gradle-file $gradleFile
+    if ($LASTEXITCODE -ne 0) { throw 'Could not apply the tracked Android project policy.' }
+
     $arguments = @('--no-install', 'tauri', 'android', 'build', '--target', 'aarch64', '--split-per-abi', '--apk', '--ci')
     if ($Variant -eq 'debug') { $arguments += '--debug' }
     if ($logAbsolute) {

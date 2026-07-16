@@ -768,7 +768,7 @@ export default function MainMode() {
             onEditModule={handleEditModule}
             onOpenResolvedPlan={handleOpenResolvedPlan}
         >
-            <div className="border-t border-border p-3">
+            <div className="p-3 pt-5">
                 <Button type="button" variant="outline" className="w-full justify-start" onClick={handleOpenPromptSheet}>
                     <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
                     <span className="min-w-0 truncate">{t('composition.compatibility.rawPrompt', 'Advanced raw prompt')}</span>
@@ -883,7 +883,7 @@ export default function MainMode() {
                 moduleStack={moduleStack}
                 inspector={inspector}
                 mobileDock={mobileDock}
-                workspaceClassName="rounded-panel border border-border bg-canvas"
+                workspaceClassName="rounded-panel bg-canvas"
                 workspace={(
                     <div className="relative h-full min-h-0 min-w-0 overflow-hidden" data-testid="main-result-canvas">
             {/* Full Screen Image Area */}
@@ -903,7 +903,7 @@ export default function MainMode() {
                                     <Button
                                         size="icon"
                                         variant="secondary"
-                                        className="h-11 w-11 rounded-control border border-border bg-card/95 text-foreground shadow-panel hover:bg-accent"
+                                        className="h-11 w-11 rounded-control bg-popover text-popover-foreground shadow-overlay hover:bg-accent"
                                         onClick={handleRegenerateWithMetadata}
                                         disabled={isGenerating}
                                         aria-label={t('actions.regenerate', '재생성')}
@@ -913,7 +913,7 @@ export default function MainMode() {
                                     <Button
                                         size="icon"
                                         variant="secondary"
-                                        className="h-11 w-11 rounded-control border border-border bg-card/95 text-foreground shadow-panel hover:bg-accent"
+                                        className="h-11 w-11 rounded-control bg-popover text-popover-foreground shadow-overlay hover:bg-accent"
                                         onClick={handleCopy}
                                         aria-label={t('actions.copy', '복사')}
                                     >
@@ -922,7 +922,7 @@ export default function MainMode() {
                                     <Button
                                         size="icon"
                                         variant="secondary"
-                                        className="h-11 w-11 rounded-control border border-border bg-card/95 text-foreground shadow-panel hover:bg-accent"
+                                        className="h-11 w-11 rounded-control bg-popover text-popover-foreground shadow-overlay hover:bg-accent"
                                         onClick={handleSaveAs}
                                         aria-label={t('actions.saveAs', '저장')}
                                     >
@@ -975,7 +975,7 @@ export default function MainMode() {
                 ) : isGenerating ? (
                     // Loading State (Only shown when no previous image exists)
                     <div className="z-10 flex max-w-sm flex-col items-center justify-center px-6 text-center" role="status" aria-live="polite">
-                        <div className="relative mb-4 flex h-16 w-16 items-center justify-center rounded-panel border border-border bg-card shadow-panel">
+                        <div className="relative mb-4 flex h-16 w-16 items-center justify-center rounded-panel bg-muted/50">
                             <div className="absolute inset-2 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
                             <ImagePlus className="h-6 w-6 text-primary" />
                         </div>
@@ -995,7 +995,7 @@ export default function MainMode() {
                 ) : (
                     // Empty state intentionally keeps one action and one import hint.
                     <div className="flex max-w-md flex-col items-center justify-center px-6 text-center">
-                        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-panel border border-border bg-muted text-muted-foreground">
+                        <div className="mb-4 flex h-16 w-16 items-center justify-center text-muted-foreground/70">
                             <ImageIcon className="h-8 w-8" />
                         </div>
                         <h1 className="text-lg font-semibold text-foreground">{t('generate.emptyState')}</h1>
@@ -1015,7 +1015,7 @@ export default function MainMode() {
 
             {/* Generation Progress Bar - Above Info Bar */}
             {isGenerating && (
-                <div className="absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-1/2 z-20 flex w-[min(30rem,calc(100%-1rem))] -translate-x-1/2 items-center gap-3 rounded-panel border border-border bg-card px-3 py-2 shadow-overlay md:bottom-3" role="status" aria-live="polite">
+                <div className="absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-1/2 z-20 flex w-[min(30rem,calc(100%-1rem))] -translate-x-1/2 items-center gap-3 rounded-panel bg-popover px-3 py-2 text-popover-foreground shadow-overlay md:bottom-3" role="status" aria-live="polite">
                     <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-3">

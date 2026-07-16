@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { patchAndroidSigning } from './patch-android-signing.mjs'
+import { patchAndroidBackDispatcher, patchAndroidSigning } from './patch-android-signing.mjs'
 
 function requiredEnvironment(name) {
     const value = process.env[name]
@@ -75,6 +75,7 @@ if (!existsSync(gradleFile)) {
 }
 
 patchAndroidSigning(gradleFile, policy.debugApplicationIdSuffix)
+patchAndroidBackDispatcher(join(androidRoot, 'app', 'src', 'main', 'AndroidManifest.xml'))
 
 const generatedGradle = readFileSync(gradleFile, 'utf8')
 for (const [label, pattern] of [

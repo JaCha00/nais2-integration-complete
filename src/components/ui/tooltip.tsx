@@ -18,7 +18,7 @@ const TooltipContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-[9999] overflow-hidden rounded-lg border border-white/10 bg-black/80 backdrop-blur-md px-3 py-1.5 text-xs text-white shadow-xl",
+        "z-[9999] overflow-hidden rounded-control border-0 bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-overlay",
         "animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
         "data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
         className
@@ -71,7 +71,7 @@ function Tip({
         <div className="flex items-center gap-2">
           <span>{content}</span>
           {shortcut && (
-            <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-white/10 rounded border border-white/20">
+            <kbd className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               {shortcut}
             </kbd>
           )}

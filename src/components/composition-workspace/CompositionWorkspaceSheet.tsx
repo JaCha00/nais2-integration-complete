@@ -62,7 +62,7 @@ export function CompositionWorkspaceSheet({
                     returnFocusRef.current.focus()
                 }}
             >
-                <SheetHeader className="shrink-0 border-b border-border pb-3">
+                <SheetHeader className="shrink-0 bg-muted/20 pb-3 pl-3">
                     <SheetTitle className="break-words">{title}</SheetTitle>
                     {description && <SheetDescription className="break-words">{description}</SheetDescription>}
                 </SheetHeader>

@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useState } from 'react'
+import { onBackButtonPress } from '@tauri-apps/api/app'
 import { useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
@@ -26,7 +27,6 @@ import {
     Globe,
     Images,
     Settings,
-    Coins,
     Wand2,
     NotebookPen,
     FlaskConical,
@@ -123,6 +123,28 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
         }
     }, [])
 
+    useEffect(() => {
+        if (!isAndroidRuntime || (!leftSheetOpen && !rightSheetOpen)) return
+
+        let disposed = false
+        let unregister: (() => Promise<void>) | undefined
+
+        // Tauri's Android app plugin owns the native Back dispatcher; registering only while a
+        // support sheet is open lets Back close that sheet, then restores normal Activity behavior.
+        void onBackButtonPress(() => {
+            if (rightSheetOpen) setRightSheetOpen(false)
+            else if (leftSheetOpen) setLeftSheetOpen(false)
+        }).then((listener) => {
+            if (disposed) void listener.unregister()
+            else unregister = () => listener.unregister()
+        })
+
+        return () => {
+            disposed = true
+            if (unregister) void unregister()
+        }
+    }, [leftSheetOpen, rightSheetOpen])
+
     // Calculate cached vs uncached vibes (only enabled ones)
     const enabledVibes = vibeImages.filter(v => v.enabled !== false)
     const uncachedVibeCount = enabledVibes.filter(v => !v.encodedVibe).length
@@ -188,7 +210,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
 
     const promptPanelContent = (
         <>
-            <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2 sm:px-4">
+            <div className="flex min-h-14 flex-wrap items-center justify-between gap-3 px-5 py-3">
                 <div className="flex min-w-0 items-center gap-2">
                     <h2 className="min-w-0 max-w-40 truncate text-base font-semibold">
                         {activePreset?.name || t('preset.default', '기본')}
@@ -211,16 +233,14 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                         type="button"
                                         onClick={() => void handleSlotEnabled(entry.slot, false)}
                                         className={cn(
-                                            'flex min-h-11 min-w-0 items-center gap-1 rounded-control border px-2 py-2 transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card sm:gap-2 sm:px-3',
+                                            'flex min-h-11 min-w-0 items-center gap-2 rounded-control px-2 py-2 transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card sm:px-3',
                                             isSlot2
-                                                ? 'border-primary/30 bg-primary/10 text-primary hover:bg-primary/20'
-                                                : 'border-warning/40 bg-warning/10 text-warning hover:bg-warning/20'
+                                                ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                                                : 'bg-warning/10 text-warning hover:bg-warning/20'
                                         )}
                                     >
-                                        <span className="text-xs font-semibold">
-                                            {entry.slot}
-                                        </span>
-                                        <Coins className="h-4 w-4 shrink-0" aria-hidden="true" />
+                                        <span className="h-2 w-2 shrink-0 rounded-full bg-current" aria-hidden="true" />
+                                        <span className="sr-only">{t('settingsPage.api.token')} {entry.slot}</span>
                                         <span className="min-w-0 truncate text-xs font-semibold sm:text-sm">
                                             {formatAnlas(entry.anlas!.total)}
                                         </span>
@@ -233,10 +253,10 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 <button
                                     type="button"
                                     onClick={() => void handleSlotEnabled(2, true)}
-                                    className="flex min-h-11 min-w-0 items-center gap-1 rounded-control border border-border bg-muted px-2 py-2 text-muted-foreground transition-colors duration-standard hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card sm:gap-2 sm:px-3"
+                                    className="flex min-h-11 min-w-0 items-center gap-2 rounded-control bg-muted px-2 py-2 text-muted-foreground transition-colors duration-standard hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card sm:px-3"
                                 >
-                                    <span className="text-xs font-semibold">2</span>
-                                    <Coins className="h-4 w-4 shrink-0" aria-hidden="true" />
+                                    <span className="h-2 w-2 shrink-0 rounded-full bg-current opacity-50" aria-hidden="true" />
+                                    <span className="sr-only">{t('settingsPage.api.token')} 2</span>
                                     <span className="min-w-0 truncate text-xs font-semibold line-through sm:text-sm">
                                         {formatAnlas(anlas2.total)}
                                     </span>
@@ -245,10 +265,10 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                         )}
                         {(cost > 0 || cachedVibeCount > 0) && (
                             <div className={cn(
-                                "flex items-center gap-1 rounded-control border px-2 py-1 text-xs font-semibold animate-in fade-in slide-in-from-left-2 motion-reduce:animate-none",
+                                "flex items-center gap-1 rounded-control px-2 py-1 text-xs font-semibold animate-in fade-in slide-in-from-left-2 motion-reduce:animate-none",
                                 cost > 0
-                                    ? "border-destructive/30 bg-destructive/10 text-destructive"
-                                    : "border-primary/30 bg-primary/10 text-primary"
+                                    ? "bg-destructive/10 text-destructive"
+                                    : "bg-primary/10 text-primary"
                             )}>
                                 {cost > 0 && <span>-{cost}</span>}
                                 {cachedVibeCount > 0 && (
@@ -258,8 +278,8 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                         )}
                     </div>
                 ) : (
-                    <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-control border border-border bg-muted px-3 py-2">
-                        <Coins className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-control bg-muted px-3 py-2">
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/50" aria-hidden="true" />
                         <span className="min-w-0 truncate text-sm text-muted-foreground">
                             {t('settingsPage.api.token')}
                         </span>
@@ -273,7 +293,10 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
 
     return (
         <div
-            className="flex h-screen flex-col overflow-hidden bg-background"
+            className={cn(
+                "flex h-screen flex-col overflow-hidden bg-background",
+                isAndroidRuntime && "android-landscape-safe-inline",
+            )}
             style={isMobileRuntime ? {
                 // Some Android WebViews report zero CSS safe-area insets despite edge-to-edge system bars.
                 // Runtime fallbacks keep the shell clear of status/navigation controls while iOS keeps native insets.
@@ -288,28 +311,28 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
             {/* Custom Title Bar - Only show on Windows (Mac uses native decorations) */}
             {!isMac && !isMobileRuntime && <CustomTitleBar />}
 
-            {/* DESIGN.md workspace shell: border-first depth, compact spacing, and docking only at 1536px. */}
-            <div className="flex min-w-0 flex-1 gap-2 overflow-hidden p-2 sm:gap-3 sm:p-3">
+            {/* Three opaque surface tones carry the workspace hierarchy; only form controls draw edges. */}
+            <div className="flex min-w-0 flex-1 gap-3 overflow-hidden p-3">
                 <aside
                     id="nais2-prompt-dock"
                     className={cn(
-                        "hidden min-h-0 w-[420px] flex-shrink-0 flex-col overflow-hidden rounded-panel border border-border bg-card 2xl:flex 2xl:w-[500px]",
+                        "hidden min-h-0 w-[420px] flex-shrink-0 flex-col overflow-hidden rounded-panel bg-card 2xl:flex 2xl:w-[500px]",
                         (!leftSidebarVisible || compositionWorkspaceOwnsRails) && "2xl:hidden"
                     )}
                 >
                     {promptPanelContent}
                 </aside>
 
-                <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-panel border border-border bg-canvas">
+                <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-panel bg-canvas">
                     {/* The compact row keeps navigation primary; utility dialogs wrap below it on phones so every control stays in normal flow. */}
-                    <div className="z-10 flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-card px-2 py-1 sm:flex-nowrap sm:px-3">
+                    <div className="z-10 flex shrink-0 flex-wrap items-center gap-2 bg-card px-3 py-2 sm:flex-nowrap">
                         <Tip content={t('layout.toggleLeftSidebar', 'Toggle Left Sidebar')}>
                             <button
                                 type="button"
                                 onClick={handleLeftPanelToggle}
                                 className={cn(
-                                    "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control border border-transparent transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
-                                    "text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground",
+                                    "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
+                                    "text-muted-foreground hover:bg-accent hover:text-foreground",
                                     supportPanelsAreDocked && !leftSidebarVisible && "opacity-50"
                                 )}
                                 aria-label={t('layout.toggleLeftSidebar', 'Toggle Left Sidebar')}
@@ -327,8 +350,8 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 type="button"
                                 onClick={handleRightPanelToggle}
                                 className={cn(
-                                    "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control border border-transparent transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
-                                    "text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground",
+                                    "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-control transition-colors duration-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card",
+                                    "text-muted-foreground hover:bg-accent hover:text-foreground",
                                     supportPanelsAreDocked && !rightSidebarVisible && "opacity-50"
                                 )}
                                 aria-label={t('layout.toggleRightSidebar', 'Toggle Right Sidebar')}
@@ -356,7 +379,7 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                 <aside
                     id="nais2-history-dock"
                     className={cn(
-                        "hidden min-h-0 w-[280px] flex-shrink-0 overflow-hidden rounded-panel border border-border bg-card 2xl:block",
+                        "hidden min-h-0 w-[280px] flex-shrink-0 overflow-hidden rounded-panel bg-card 2xl:block",
                         (!rightSidebarVisible || compositionWorkspaceOwnsRails) && "2xl:hidden"
                     )}
                 >

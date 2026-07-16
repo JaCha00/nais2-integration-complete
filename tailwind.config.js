@@ -46,11 +46,6 @@ export default {
 					DEFAULT: 'oklch(var(--card) / <alpha-value>)',
 					foreground: 'oklch(var(--card-foreground) / <alpha-value>)'
     			},
-    			glass: {
-					DEFAULT: 'oklch(var(--card) / 0.72)',
-					border: 'oklch(var(--border) / 0.72)',
-					hover: 'oklch(var(--accent) / 0.72)'
-    			},
     			chart: {
 					'1': 'oklch(var(--chart-1) / <alpha-value>)',
 					'2': 'oklch(var(--chart-2) / <alpha-value>)',
@@ -86,8 +81,22 @@ export default {
 				]
     		},
 		boxShadow: {
-			panel: '0 8px 24px oklch(var(--scrim) / 0.16)',
-			overlay: '0 16px 48px oklch(var(--scrim) / 0.28)',
+			panel: 'none',
+			overlay: '0 12px 40px oklch(var(--scrim) / 0.32)',
+		},
+		spacing: {
+			'1': 'var(--space-1)',
+			'2': 'var(--space-2)',
+			'3': 'var(--space-3)',
+			'4': 'var(--space-4)',
+			'5': 'var(--space-5)',
+			'6': 'var(--space-6)',
+			'8': 'var(--space-8)',
+			'10': 'var(--space-10)',
+			'12': 'var(--space-12)',
+			'control': 'var(--space-control)',
+			'panel': 'var(--space-panel)',
+			'section': 'var(--space-section)',
 		},
 		transitionDuration: {
 			fast: '120ms',

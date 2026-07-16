@@ -338,9 +338,10 @@ assert.ok(
     'sheet close controls must remain below the mobile status bar',
 )
 assert.ok(
-    animatedNavBar.includes('isTiny ? "justify-start" : "justify-center"') &&
-        animatedNavBar.includes('isTiny ? "h-10 w-10 p-0"'),
-    'overflowing mobile navigation must start in bounds with stable touch targets',
+    animatedNavBar.includes('PRIMARY_PATHS') &&
+        animatedNavBar.includes('overflowItems') &&
+        animatedNavBar.includes('h-11 min-h-11 w-11 min-w-11'),
+    'mobile navigation must expose four primary routes, overflow, and stable touch targets',
 )
 for (const symbol of [
     'MEDIA_STORAGE_BASE_DIRECTORY',

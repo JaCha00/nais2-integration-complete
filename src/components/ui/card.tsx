@@ -1,15 +1,16 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 
+// Cards depend only on the shared card tone; their content hierarchy and spacing
+// provide structure without reintroducing edges or shadows.
 const Card = React.forwardRef<
     HTMLDivElement,
-    React.HTMLAttributes<HTMLDivElement> & { glass?: boolean }
->(({ className, glass, ...props }, ref) => (
+    React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
     <div
         ref={ref}
         className={cn(
-            'rounded-xl border bg-card text-card-foreground shadow',
-            glass && 'glass',
+            'rounded-panel bg-card text-card-foreground',
             className
         )}
         {...props}

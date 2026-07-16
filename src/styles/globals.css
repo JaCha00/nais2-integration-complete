@@ -12,27 +12,39 @@
     --card-foreground: 0.190 0.025 262;
     --popover: 1 0 0;
     --popover-foreground: 0.190 0.025 262;
-    --primary: 0.420 0.205 263.65;
+    --primary: 0.420 0.170 263.65;
     --primary-foreground: 0.985 0.005 260;
     --secondary: 0.935 0.014 262;
     --secondary-foreground: 0.250 0.030 262;
     --muted: 0.945 0.010 262;
     --muted-foreground: 0.490 0.030 262;
-    --accent: 0.910 0.045 263.65;
+    --accent: 0.910 0.035 263.65;
     --accent-foreground: 0.280 0.120 263.65;
     --destructive: 0.550 0.215 26;
     --destructive-foreground: 0.985 0.005 260;
     --border: 0.875 0.018 262;
     --input: 0.845 0.020 262;
-    --ring: 0.500 0.205 263.65;
+    --ring: 0.500 0.170 263.65;
     --success: 0.520 0.140 150;
     --warning: 0.700 0.140 75;
     --info: 0.520 0.160 250;
     --scrim: 0.100 0.010 262;
-    --radius: 0.5rem;
-    --radius-control: 0.5rem;
-    --radius-panel: 0.75rem;
+    --radius: 0.75rem;
+    --radius-control: 0.625rem;
+    --radius-panel: 0.875rem;
     --touch-target: 2.75rem;
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+    --space-10: 2.5rem;
+    --space-12: 3rem;
+    --space-control: 0.75rem;
+    --space-panel: 1.25rem;
+    --space-section: 2rem;
     --chart-1: 0.620 0.190 263.65;
     --chart-2: 0.620 0.130 165;
     --chart-3: 0.650 0.150 75;
@@ -48,19 +60,19 @@
     --card-foreground: 0.940 0.012 260;
     --popover: 0.190 0.018 262;
     --popover-foreground: 0.940 0.012 260;
-    --primary: 0.680 0.180 263.65;
+    --primary: 0.640 0.150 263.65;
     --primary-foreground: 0.130 0.020 262;
     --secondary: 0.225 0.020 262;
     --secondary-foreground: 0.910 0.014 260;
     --muted: 0.205 0.016 262;
     --muted-foreground: 0.680 0.025 260;
-    --accent: 0.240 0.055 263.65;
+    --accent: 0.230 0.040 263.65;
     --accent-foreground: 0.870 0.080 263.65;
     --destructive: 0.640 0.205 25;
     --destructive-foreground: 0.985 0.005 260;
     --border: 0.285 0.020 262;
     --input: 0.320 0.024 262;
-    --ring: 0.720 0.170 263.65;
+    --ring: 0.680 0.140 263.65;
     --success: 0.690 0.160 150;
     --warning: 0.780 0.140 75;
     --info: 0.720 0.150 250;
@@ -74,10 +86,6 @@
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
-
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
@@ -114,36 +122,22 @@
 }
 
 @layer utilities {
-
-  /* Glassmorphism utilities */
-  .glass {
-    @apply border border-border/70 bg-card/75;
+  /* Structural depth is intentionally limited to three matte application
+     surfaces. Raised is reserved for transient overlays. */
+  .surface-canvas {
+    @apply bg-canvas;
   }
 
-  .glass-hover {
-    @apply transition-colors duration-standard hover:bg-accent/60;
+  .surface-card {
+    @apply bg-card;
   }
 
-  /* Bento grid utilities */
-  .bento-grid {
-    @apply grid gap-4 auto-rows-[minmax(180px, auto)];
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  .surface-raised {
+    @apply bg-popover shadow-overlay;
   }
 
-  .bento-item {
-    @apply rounded-panel p-4 glass transition-colors duration-standard;
-  }
-
-  .bento-item-lg {
-    @apply col-span-2 row-span-2;
-  }
-
-  .bento-item-wide {
-    @apply col-span-2;
-  }
-
-  .bento-item-tall {
-    @apply row-span-2;
+  .thumb-bare {
+    @apply rounded-control bg-muted/40 transition-colors duration-standard hover:bg-accent/60;
   }
 
   /* Text gradient */
@@ -196,6 +190,20 @@ body {
   }
 }
 
+/* Tauri depends on WebView safe-area reporting, but some Android three-button
+   navigation builds return zero in landscape. Runtime-only classes reserve the
+   physical rail so shell, sheet, and fixed-dock actions stay tappable. */
+@media (orientation: landscape) and (pointer: coarse) {
+  .android-landscape-safe-inline {
+    padding-left: max(5rem, env(safe-area-inset-left)) !important;
+    padding-right: max(5rem, env(safe-area-inset-right)) !important;
+  }
+
+  .android-landscape-safe-close {
+    right: max(5rem, env(safe-area-inset-right)) !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -207,7 +215,6 @@ body {
   }
 }
 
-html.is-window-resizing .glass,
 html.is-window-resizing .glass-surface,
 html.is-window-resizing .backdrop-blur-sm,
 html.is-window-resizing .backdrop-blur-md,

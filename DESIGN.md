@@ -8,12 +8,13 @@ capabilities are presented.
 
 ## 1. Atmosphere / Signature
 
-**Cobalt Instrument** is a quiet, dense image-production cockpit. Matte graphite
-surfaces keep attention on prompts and generated images, while one near-primary
-blue marks selection, focus, and the next meaningful action. The interface uses
-thin dividers and tonal layers instead of decorative cards, glow, blur, or
-gradient chrome. `DESIGN_VARIANCE = 4`, `MOTION_INTENSITY = 3`, and
-`VISUAL_DENSITY = 8`.
+**Cobalt Instrument** is a matte graphite image-production cockpit. Boundaries
+disappear into three deliberate tones (`background -> canvas -> card`) so prompts
+and generated images remain the visual priority. One restrained cobalt marks
+selection, focus, and the next meaningful action. Borders are reserved for form
+fields, focus treatment, and data-row dividers; decorative cards, glow, blur, and
+gradient chrome are absent. `DESIGN_VARIANCE = 3`, `MOTION_INTENSITY = 2`, and
+`VISUAL_DENSITY = 6`.
 
 ## 2. Color
 
@@ -31,19 +32,19 @@ tokens move lighter in dark mode so text, icons, and focus states remain legible
 | `--card-foreground` | `0.190 0.025 262` | `0.940 0.012 260` | Text on panel |
 | `--popover` | `1 0 0` | `0.190 0.018 262` | Menus and dialogs |
 | `--popover-foreground` | `0.190 0.025 262` | `0.940 0.012 260` | Text on overlays |
-| `--primary` | `0.420 0.205 263.65` | `0.680 0.180 263.65` | Main action and active state |
+| `--primary` | `0.420 0.170 263.65` | `0.640 0.150 263.65` | Main action and active state |
 | `--primary-foreground` | `0.985 0.005 260` | `0.130 0.020 262` | Content on primary |
 | `--secondary` | `0.935 0.014 262` | `0.225 0.020 262` | Secondary controls |
 | `--secondary-foreground` | `0.250 0.030 262` | `0.910 0.014 260` | Content on secondary |
 | `--muted` | `0.945 0.010 262` | `0.205 0.016 262` | Quiet fill |
 | `--muted-foreground` | `0.490 0.030 262` | `0.680 0.025 260` | Secondary text |
-| `--accent` | `0.910 0.045 263.65` | `0.240 0.055 263.65` | Hover and selected tonal fill |
+| `--accent` | `0.910 0.035 263.65` | `0.230 0.040 263.65` | Hover and selected tonal fill |
 | `--accent-foreground` | `0.280 0.120 263.65` | `0.870 0.080 263.65` | Content on accent |
 | `--destructive` | `0.550 0.215 26` | `0.640 0.205 25` | Destructive and error |
 | `--destructive-foreground` | `0.985 0.005 260` | `0.985 0.005 260` | Content on destructive |
 | `--border` | `0.875 0.018 262` | `0.285 0.020 262` | Hairlines and separation |
 | `--input` | `0.845 0.020 262` | `0.320 0.024 262` | Form boundaries |
-| `--ring` | `0.500 0.205 263.65` | `0.720 0.170 263.65` | Keyboard focus |
+| `--ring` | `0.500 0.170 263.65` | `0.680 0.140 263.65` | Keyboard focus |
 | `--success` | `0.520 0.140 150` | `0.690 0.160 150` | Success and verified |
 | `--warning` | `0.700 0.140 75` | `0.780 0.140 75` | Cost and caution |
 | `--info` | `0.520 0.160 250` | `0.720 0.150 250` | Informational state |
@@ -73,9 +74,10 @@ token with alpha.
 
 ## 4. Spacing and Responsive Structure
 
-The base unit is `4px`. Allowed rhythm tokens are `4, 8, 12, 16, 20, 24, 32,
-40, 44, 48, 64px`; `1px` is allowed only for borders. Tailwind equivalents are
-`1, 2, 3, 4, 5, 6, 8, 10, 11, 12, 16`.
+The base unit is `4px`, with the main layout rhythm aligned to an `8px` grid.
+Allowed rhythm tokens are `4, 8, 12, 16, 20, 24, 32, 40, 44, 48, 64px`; `1px`
+is allowed only for borders. Tailwind equivalents are `1, 2, 3, 4, 5, 6, 8,
+10, 11, 12, 16`, backed by `--space-1` through `--space-12` where defined.
 
 - `--touch-target = 44px`; every coarse-pointer action uses at least this hit box.
 - Shell inset: `8px` at 390, `12px` from 640, plus Android
@@ -83,7 +85,10 @@ The base unit is `4px`. Allowed rhythm tokens are `4, 8, 12, 16, 20, 24, 32,
 - Shell gap: `8px` mobile, `12px` desktop.
 - Control padding: `8px 12px`; dense icon controls keep a 44px hit box and a
   `16–20px` icon.
-- Panel padding: `12px` dense, `16px` standard, `24px` dialog/desktop settings.
+- Panel padding: `20px` standard, `24px` dialog/desktop settings. Dense `12px`
+  padding is reserved for repeated data rows, not shell-level panels.
+- Section rhythm: `32px` between major regions. Related controls may use `8px`
+  or `12px` internal gaps.
 - Below `640px`: four primary destinations plus an accessible overflow menu;
   Prompt and History remain dedicated actions. No horizontal navigation scroll.
 - `640–1535px`: center workspace remains primary; Prompt and History open as
@@ -96,13 +101,14 @@ The base unit is `4px`. Allowed rhythm tokens are `4, 8, 12, 16, 20, 24, 32,
 
 ## 5. Components and Information Architecture
 
-- **Workspace shell:** canvas first, 1px border, `12px` radius. Navigation is a
-  compact toolbar, not a floating pill. Active state uses `--accent` plus a
-  primary icon/text; inactive controls remain neutral.
-- **Buttons:** control radius `8px`. Primary is a flat `--primary` fill; hover
+- **Workspace shell:** canvas first, no border, `12px` radius. Navigation is a
+  five-control rail (four primary destinations plus overflow), not a floating
+  pill. Active state uses `--accent` plus primary icon/text; inactive controls
+  remain neutral.
+- **Buttons:** control radius `12px`. Primary is a flat `--primary` fill; hover
   changes tone, active uses a slight opacity/transform response, focus uses a
   2px `--ring`, and disabled retains its footprint at 45% opacity. No gradient.
-- **Inputs/selects/textareas:** `8px` radius, input border, canvas/card surface,
+- **Inputs/selects/textareas:** `12px` radius, input border, canvas/card surface,
   44px touch height on coarse pointers, blue focus ring, readable disabled state.
 - **Panels:** `12px` radius for shell-level panels only. Repeated rows use dividers
   or tonal fills, not cards inside cards.
@@ -119,7 +125,12 @@ The base unit is `4px`. Allowed rhythm tokens are `4, 8, 12, 16, 20, 24, 32,
   Mobile uses one section select at the top; every section remains reachable.
 - **History:** empty/loading/error states occupy the panel without ornamental
   rings. Sheet view uses a two-column thumbnail grid when space allows; docked
-  view may use one column.
+  view may use one column. Thumbnail cells rest without borders or shadows;
+  image actions appear as a tonal overlay on hover or keyboard focus.
+- **Prompt command surface:** Base, Additional, Detail, and Negative remain
+  directly reachable as slots in one editor. Only the selected slot exposes its
+  textarea; character, fragment, AI assistance, and parameters form one quiet
+  command rail below it. Four equal collapsible cards are prohibited.
 - **Startup rescue:** database-unavailable startup renders one bounded alert panel
   without workspace navigation or generation/edit/save entry points. Retry,
   diagnostic export, backup guidance, and safe exit remain direct native-button
@@ -185,19 +196,25 @@ The base unit is `4px`. Allowed rhythm tokens are `4, 8, 12, 16, 20, 24, 32,
 
 ## 7. Depth
 
-Depth is tonal and border-first. Workspace regions use `--background`,
-`--canvas`, and `--card` luminance steps plus 1px borders. One subtle panel
-shadow token (`0 8px 24px` at low scrim alpha) is allowed for floating sheets and
-dialogs only. No glow, glassmorphism, backdrop blur on persistent chrome, or
-decorative shadow ladder.
+Depth is tonal-first and borders are exceptional.
+
+- Region separation uses only `--background`, `--canvas`, and `--card`.
+- A 1px border is allowed on input, textarea, select, table-row dividers, and
+  focus-ring offsets. Panels, cards, grid cells, and buttons do not use borders.
+- One shadow token, `--shadow-overlay`, is allowed only on popovers, dialogs,
+  sheets, and functional drag overlays. Panels, thumbnails, and buttons have no
+  shadow.
+- Hover and active states change tone with `--accent` instead of drawing an edge.
+- No glow, glassmorphism, persistent backdrop blur, or decorative shadow ladder.
 
 ## Do / Do Not
 
 - Do keep blue to active, focus, link, progress, and primary-action semantics.
-- Do make dense controls scan as rows and groups with separators.
+- Do separate regions and actions through tone, typography, and whitespace.
 - Do preserve Android gates, safe areas, storage adapters, and every command.
-- Do not use purple, amber/orange action gradients, nested decorative cards,
-  oversized empty-state art, excessive pills, or hidden functionality.
+- Do not use panel borders, cards inside cards, thumbnail shadows, decorative
+  pills, persistent glassmorphism, four or more peer collapsibles, oversized
+  empty-state art, or hidden functionality.
 - Do not solve responsive failures with page-level horizontal scrolling.
 
 ## 8. Platform capability and data-scale contract

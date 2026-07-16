@@ -111,11 +111,11 @@ export function ModuleStack({
 
     return (
         <section
-            className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden rounded-panel border border-border bg-card', className)}
+            className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden rounded-panel bg-card', className)}
             aria-labelledby="composition-module-stack-title"
             data-testid="composition-module-stack"
         >
-            <header className="flex min-h-11 min-w-0 items-center justify-between gap-2 border-b border-border px-3">
+            <header className="flex min-h-11 min-w-0 items-center justify-between gap-2 bg-muted/20 px-3">
                 <h2 id="composition-module-stack-title" className="min-w-0 truncate text-sm font-semibold" title={title ?? labels.modules}>
                     {title ?? labels.modules}
                 </h2>
@@ -123,7 +123,7 @@ export function ModuleStack({
             </header>
 
             {onSearchChange && (
-                <label className="relative block border-b border-border p-2">
+                <label className="relative block p-2">
                     <span className="sr-only">{searchLabel}</span>
                     <Search className="pointer-events-none absolute left-5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                     <Input

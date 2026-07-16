@@ -697,7 +697,7 @@
         "cancel": "キャンセル",
         "preview": "プレビュー",
         "emptyState": "画像を生成してください",
-        "emptyDescription": "左側でプロンプトを入力し、生成ボタンをクリックしてください",
+        "emptyDescription": "プロンプトを開いて入力し、生成ボタンを押してください",
         "loadingTitle": "画像生成中...",
         "loadingDescription": "しばらくお待ちください",
         "lastTime": "前回の所要時間",
@@ -726,6 +726,7 @@
     "history": {
         "title": "履歴",
         "empty": "生成された画像はありません",
+        "emptyHint": "プロンプトを開いて最初の画像を作成しましょう。",
         "count": "{{count}}枚"
     },
     "actions": {
