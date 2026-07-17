@@ -1,5 +1,11 @@
 import type { OutputRecoveryResult, OutputWriter } from '@/services/output/output-writer'
+import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
 import type { IndexedDBQueueRepository } from './indexeddb-queue-repository'
+import {
+    registerQueueArtifact,
+    rollbackQueueArtifactRegistration,
+    type QueueArtifactRepository,
+} from './queue-artifact-lineage'
 
 /**
  * Reconciles queue-owned OutputWriter journals before generic journal rollback
@@ -10,7 +16,7 @@ import type { IndexedDBQueueRepository } from './indexeddb-queue-repository'
 export async function recoverQueueLinkedOutputs(
     repository: IndexedDBQueueRepository,
     writer: OutputWriter,
-    options: { now: string },
+    options: { now: string; artifactRepository?: QueueArtifactRepository },
 ): Promise<OutputRecoveryResult[]> {
     await repository.initialize()
     const links = await writer.inspectPendingQueueTransactions()
@@ -31,12 +37,36 @@ export async function recoverQueueLinkedOutputs(
             results.push(await writer.recoverTransaction(link.transactionId, {
                 mode: 'retry-workflow',
                 canCommit: () => true,
-                commitWorkflow: async () => {
-                    await repository.recoverFilesCommittedSuccess({
-                        jobId: job.id,
-                        now: options.now,
-                        outputTransactionId: link.transactionId,
+                commitWorkflow: async output => {
+                    // A files-committed journal may survive a process restart. Register
+                    // the same immutable artifact before terminalizing the Job so recovery
+                    // cannot create an artifact-less Queue success.
+                    const registration = await registerQueueArtifact(
+                        job,
                         artifactReference,
+                        output,
+                        options.artifactRepository,
+                    )
+                    try {
+                        await repository.recoverFilesCommittedSuccess({
+                            jobId: job.id,
+                            now: options.now,
+                            outputTransactionId: link.transactionId,
+                            artifactReference,
+                        })
+                    } catch (error) {
+                        await rollbackQueueArtifactRegistration(registration, options.artifactRepository)
+                        throw error
+                    }
+                    publishGeneratedArtifact({
+                        path: output.path,
+                        ...(registration === null
+                            ? {}
+                            : {
+                                artifactId: registration.record.artifactId,
+                                sourceJobId: job.id,
+                                ...(job.sceneId === null ? {} : { sourceSceneId: job.sceneId }),
+                            }),
                     })
                 },
             }))

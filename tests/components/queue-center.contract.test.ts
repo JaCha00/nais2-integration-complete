@@ -2,6 +2,9 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
+import en from '@/i18n/locales/en.json'
+import ja from '@/i18n/locales/ja.json'
+import ko from '@/i18n/locales/ko.json'
 import { calculateFixedVirtualRange } from '@/lib/virtualization/fixed-range'
 
 const source = (path: string) => readFile(resolve(process.cwd(), path), 'utf8')
@@ -22,17 +25,30 @@ describe('Queue Center 10,000-job UI contract', () => {
         expect(cases[2]).toEqual({ start: 9994, end: 10_000 })
     })
 
-    it('uses projection-only pagination, fixed virtualization, ARIA positions, and keyboard focus', async () => {
+    it('uses revision-gated viewport projections, fixed virtualization, ARIA positions, and keyboard focus', async () => {
         const [page, app, layout, nav] = await Promise.all([
             source('src/pages/QueueCenter.tsx'),
             source('src/App.tsx'),
             source('src/components/layout/ThreeColumnLayout.tsx'),
             source('src/components/layout/AnimatedNavBar.tsx'),
         ])
-        expect(page).toContain('listJobProjections')
+        expect(page).toContain('getBatchProjectionMeta')
+        expect(page).toContain('listJobProjectionWindow')
+        expect(page).not.toContain('repository.getBatchSummary')
+        expect(page).not.toContain('listJobProjections')
+        expect(page).not.toContain("statusFilter === 'all' ? jobs : jobs.filter(job => job.state === statusFilter)")
+        expect(page).toContain('projectionMeta.revision')
+        expect(page).toContain('requestedWindow.start')
+        expect(page).toContain('visibleWindowItems')
+        expect(page).toContain("document.visibilityState === 'visible'")
+        expect(page).toContain("document.addEventListener('visibilitychange', refreshWhenVisible)")
+        expect(page).toContain('summary.states.failed > 0')
+        expect(page).toContain('if (selectedBatch === null || !hasRetryableFailures) return')
+        expect(page).toContain('disabled={busy || !hasRetryableFailures}')
+        expect(page).not.toContain("jobs.some(job => job.state === 'failed')")
         expect(page).toContain('calculateFixedVirtualRange')
-        expect(page).toContain('filteredJobs.slice(windowRange.start, windowRange.end)')
-        expect(page).toContain('aria-setsize={filteredJobs.length}')
+        expect(page).toContain('visibleWindowItems.map')
+        expect(page).toContain('aria-setsize={filteredTotal}')
         expect(page).toContain('aria-posinset={index + 1}')
         expect(page).toContain("event.key === 'ArrowDown'")
         expect(page).toContain("event.key === 'Home'")
@@ -56,9 +72,56 @@ describe('Queue Center 10,000-job UI contract', () => {
         expect(page).toContain('data-testid="queue-center-ready"')
         expect(page).toContain('data-testid="legacy-queue-migration"')
         expect(page).toContain('enqueueCurrentSceneQueue()')
-        expect(page).toContain('keeps the legacy counts for rollback')
+        expect(page).toContain('keeps existing item counts available for rollback')
         expect(page).toContain("t('queue.executionMode', 'Execution method')")
-        expect(page).toContain("t('queue.executionCurrent', 'Safe background execution')")
-        expect(page).toContain("t('queue.executionPrevious', 'Previous execution method')")
+        expect(page).toContain("t('queue.executionCurrent', 'Background queue')")
+        expect(page).toContain("t('queue.executionPrevious', 'Existing Scene queue')")
+    })
+
+    it('maps queue runtime IDs and job controls to locale-backed user labels', async () => {
+        const page = await source('src/pages/QueueCenter.tsx')
+
+        for (const required of [
+            "t('queue.workflow.main', 'Main image')",
+            "t('queue.workflow.scene', 'Scene image')",
+            "t('queue.stage.transport', 'Sending request')",
+            "t('queue.stage.processing', 'Processing')",
+            "t('queue.cancelJob', 'Cancel job')",
+            "t('queue.skipJob', 'Skip job')",
+            "t('queue.viewDetails', 'View details')",
+            "t('queue.openJobDetails', 'Open job details')",
+            "t('queue.jobActions', 'Job actions')",
+            "t('queue.existingQueueTransfer', 'Existing Scene queue transfer')",
+        ]) {
+            expect(page).toContain(required)
+        }
+        expect(page).not.toContain('>{job.workflow}{job.sceneId')
+        expect(page).not.toContain('{job.progress.stage} · {percent}%')
+        expect(page).not.toContain('/>Cancel\n')
+        expect(page).not.toContain('/>Skip\n')
+        expect(page).not.toContain('/>Diagnostic\n')
+
+        for (const locale of [en, ko, ja]) {
+            expect(locale.queue).toMatchObject({
+                executionCurrent: expect.any(String),
+                executionPrevious: expect.any(String),
+                existingQueueTransfer: expect.any(String),
+                workflow: {
+                    main: expect.any(String),
+                    scene: expect.any(String),
+                    styleLab: expect.any(String),
+                },
+                stage: {
+                    queued: expect.any(String),
+                    transport: expect.any(String),
+                    stream: expect.any(String),
+                    executor: expect.any(String),
+                    processing: expect.any(String),
+                },
+            })
+        }
+        expect(en.queue.executionCurrent).toBe('Background queue')
+        expect(en.queue.executionPrevious).toBe('Existing Scene queue')
+        expect(en.queue.legacyPending).not.toMatch(/legacy|durable/i)
     })
 })

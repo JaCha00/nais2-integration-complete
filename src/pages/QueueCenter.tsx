@@ -21,8 +21,10 @@ import {
 } from '@/components/ui/dropdown-menu'
 import type {
     GenerationBatch,
+    GenerationBatchProjectionMeta,
     GenerationBatchSummary,
     GenerationJobProjection,
+    GenerationJobProjectionWindow,
     GenerationJobState,
     QueueFailurePolicy,
 } from '@/domain/queue/types'
@@ -75,13 +77,6 @@ export function calculateQueueRate(summary: GenerationBatchSummary, nowMs: numbe
     return { throughput, eta }
 }
 
-function formatEta(seconds: number | null): string {
-    if (seconds === null) return '—'
-    if (seconds < 60) return `${seconds}s`
-    if (seconds < 3_600) return `${Math.ceil(seconds / 60)}m`
-    return `${Math.ceil(seconds / 3_600)}h`
-}
-
 function retryIdentity(batchId: string): string {
     const safeBatch = batchId.replace(/[^A-Za-z0-9-]/g, '-').slice(0, 96)
     return `retry-${safeBatch}`
@@ -103,9 +98,13 @@ export default function QueueCenter() {
     const openDrawer = useDiagnosticsStore(state => state.openDrawer)
     const viewportRef = useRef<HTMLDivElement>(null)
     const refreshId = useRef(0)
+    const windowRequestId = useRef(0)
+    const pendingFocusIndex = useRef<number | null>(null)
+    const selectedBatchIdRef = useRef<string | null>(selectedBatchId)
+    selectedBatchIdRef.current = selectedBatchId
     const [batches, setBatches] = useState<GenerationBatch[]>([])
-    const [jobs, setJobs] = useState<GenerationJobProjection[]>([])
-    const [summary, setSummary] = useState<GenerationBatchSummary | null>(null)
+    const [projectionMeta, setProjectionMeta] = useState<GenerationBatchProjectionMeta | null>(null)
+    const [jobWindow, setJobWindow] = useState<GenerationJobProjectionWindow | null>(null)
     const [statusFilter, setStatusFilter] = useState<'all' | GenerationJobState>('all')
     const [scrollTop, setScrollTop] = useState(0)
     const [viewportHeight, setViewportHeight] = useState(560)
@@ -114,33 +113,39 @@ export default function QueueCenter() {
     const [conversionOpen, setConversionOpen] = useState(false)
 
     const selectedBatch = batches.find(batch => batch.id === selectedBatchId) ?? null
+    const summary = projectionMeta?.batchId === selectedBatchId ? projectionMeta.summary : null
+    // The durable batch aggregate is independent from the visible state filter,
+    // so retry controls cannot be accidentally hidden by a narrowed viewport.
+    const hasRetryableFailures = selectedBatch !== null
+        && summary !== null
+        && summary.batchId === selectedBatch.id
+        && summary.states.failed > 0
 
     const refresh = useCallback(async () => {
         const requestId = ++refreshId.current
         try {
             const nextBatches = await repository.listBatches()
             if (requestId !== refreshId.current) return
-            setBatches(nextBatches)
             const batchId = selectedBatchId !== null && nextBatches.some(batch => batch.id === selectedBatchId)
                 ? selectedBatchId
                 : nextBatches[0]?.id ?? null
             if (batchId !== selectedBatchId) setSelectedBatchId(batchId)
             if (batchId === null) {
-                setJobs([])
-                setSummary(null)
+                setBatches(nextBatches)
+                setProjectionMeta(null)
+                setJobWindow(null)
                 return
             }
-            const projections: GenerationJobProjection[] = []
-            let cursor: string | null = null
-            do {
-                const page = await repository.listJobProjections({ batchId, cursor, limit: 500 })
-                projections.push(...page.items)
-                cursor = page.nextCursor
-            } while (cursor !== null)
-            const nextSummary = await repository.getBatchSummary(batchId)
+            // Visible-tab polling reads one durable batch record. Job rows stay
+            // untouched until this revision changes or the virtual window moves.
+            const nextMeta = await repository.getBatchProjectionMeta(batchId)
             if (requestId !== refreshId.current) return
-            setJobs(projections)
-            setSummary(nextSummary)
+            setBatches(nextBatches)
+            setProjectionMeta(current => (
+                current?.batchId === nextMeta.batchId && current.revision === nextMeta.revision
+                    ? current
+                    : nextMeta
+            ))
         } catch (error) {
             reportDiagnostic(error, { operation: 'queue-center.refresh', stage: 'read', category: 'persistence' })
         }
@@ -148,8 +153,17 @@ export default function QueueCenter() {
 
     useEffect(() => {
         void refresh()
-        const interval = window.setInterval(() => void refresh(), 1_000)
-        return () => window.clearInterval(interval)
+        // Background tabs pause even the small revision poll and refresh once
+        // visible again, preventing hidden Queue Center work.
+        const refreshWhenVisible = () => {
+            if (document.visibilityState === 'visible') void refresh()
+        }
+        const interval = window.setInterval(refreshWhenVisible, 1_000)
+        document.addEventListener('visibilitychange', refreshWhenVisible)
+        return () => {
+            window.clearInterval(interval)
+            document.removeEventListener('visibilitychange', refreshWhenVisible)
+        }
     }, [refresh])
 
     useEffect(() => {
@@ -162,24 +176,109 @@ export default function QueueCenter() {
         return () => observer?.disconnect()
     }, [])
 
-    const filteredJobs = useMemo(() => (
-        statusFilter === 'all' ? jobs : jobs.filter(job => job.state === statusFilter)
-    ), [jobs, statusFilter])
+    const filteredTotal = summary === null
+        ? 0
+        : statusFilter === 'all'
+            ? summary.total
+            : summary.states[statusFilter]
     useEffect(() => {
-        setFocusedIndex(current => Math.max(0, Math.min(current, filteredJobs.length - 1)))
+        setFocusedIndex(current => Math.max(0, Math.min(current, filteredTotal - 1)))
         const viewport = viewportRef.current
         if (viewport !== null) {
-            const maximum = Math.max(0, filteredJobs.length * QUEUE_ROW_HEIGHT - viewport.clientHeight)
+            const maximum = Math.max(0, filteredTotal * QUEUE_ROW_HEIGHT - viewport.clientHeight)
             if (viewport.scrollTop > maximum) viewport.scrollTo({ top: maximum, behavior: 'auto' })
         }
-    }, [filteredJobs.length])
+    }, [filteredTotal])
     const windowRange = useMemo(() => calculateFixedVirtualRange({
-        itemCount: filteredJobs.length,
+        itemCount: filteredTotal,
         scrollTop,
         viewportHeight,
         rowHeight: QUEUE_ROW_HEIGHT,
         overscan: QUEUE_OVERSCAN,
-    }), [filteredJobs.length, scrollTop, viewportHeight])
+    }), [filteredTotal, scrollTop, viewportHeight])
+    const requestedWindow = useMemo(() => ({
+        start: Math.max(0, windowRange.start - QUEUE_OVERSCAN * 2),
+        end: Math.min(filteredTotal, windowRange.end + QUEUE_OVERSCAN * 2),
+    }), [filteredTotal, windowRange.end, windowRange.start])
+
+    useEffect(() => {
+        if (selectedBatchId === null || projectionMeta === null || filteredTotal === 0) {
+            // Invalidate an in-flight range before it can repopulate a batch or
+            // filter the user has already left.
+            windowRequestId.current += 1
+            setJobWindow(null)
+            return
+        }
+        const state = statusFilter === 'all' ? null : statusFilter
+        const existing = jobWindow
+        const coversRange = existing !== null
+            && existing.batchId === selectedBatchId
+            && existing.revision === projectionMeta.revision
+            && existing.state === state
+            && existing.offset <= windowRange.start
+            && existing.offset + existing.items.length >= windowRange.end
+        if (coversRange) return
+
+        const requestId = ++windowRequestId.current
+        void repository.listJobProjectionWindow({
+            batchId: selectedBatchId,
+            ...(state === null ? {} : { state }),
+            offset: requestedWindow.start,
+            limit: Math.max(1, requestedWindow.end - requestedWindow.start),
+        }).then(nextWindow => {
+            if (requestId !== windowRequestId.current || selectedBatchIdRef.current !== nextWindow.batchId) return
+            setProjectionMeta(current => (
+                current?.batchId === nextWindow.batchId && current.revision >= nextWindow.revision
+                    ? current
+                    : current !== null && current.batchId !== nextWindow.batchId
+                        ? current
+                    : {
+                        batchId: nextWindow.batchId,
+                        revision: nextWindow.revision,
+                        summary: nextWindow.summary,
+                    }
+            ))
+            setJobWindow(nextWindow)
+        }).catch(error => {
+            if (requestId !== windowRequestId.current) return
+            reportDiagnostic(error, { operation: 'queue-center.window', stage: 'read', category: 'persistence' })
+        })
+    }, [
+        filteredTotal,
+        jobWindow,
+        projectionMeta,
+        repository,
+        requestedWindow.end,
+        requestedWindow.start,
+        selectedBatchId,
+        statusFilter,
+        windowRange.end,
+        windowRange.start,
+    ])
+
+    const visibleWindowItems = useMemo(() => {
+        if (jobWindow === null
+            || jobWindow.batchId !== selectedBatchId
+            || jobWindow.revision !== projectionMeta?.revision) return []
+        const start = Math.max(windowRange.start, jobWindow.offset)
+        const end = Math.min(windowRange.end, jobWindow.offset + jobWindow.items.length)
+        return jobWindow.items.slice(start - jobWindow.offset, end - jobWindow.offset).map((job, offset) => ({
+            job,
+            index: start + offset,
+        }))
+    }, [jobWindow, projectionMeta?.revision, selectedBatchId, windowRange.end, windowRange.start])
+
+    useEffect(() => {
+        const pending = pendingFocusIndex.current
+        if (pending === null
+            || !visibleWindowItems.some(item => item.index === pending)) return
+        pendingFocusIndex.current = null
+        const timeout = window.setTimeout(() => {
+            viewportRef.current?.querySelector<HTMLElement>(`[data-queue-index="${pending}"]`)?.focus()
+        }, 0)
+        return () => window.clearTimeout(timeout)
+    }, [visibleWindowItems])
+
     const rate = calculateQueueRate(summary ?? emptySummary(selectedBatchId ?? ''), Date.now())
 
     const runAction = async (action: () => Promise<unknown>) => {
@@ -195,7 +294,7 @@ export default function QueueCenter() {
     }
 
     const retryFailed = async () => {
-        if (selectedBatch === null || !jobs.some(job => job.state === 'failed')) return
+        if (selectedBatch === null || !hasRetryableFailures) return
         const identity = retryIdentity(selectedBatch.id)
         await runAction(() => repository.retryFailedJobs({
             sourceBatchId: selectedBatch.id,
@@ -218,12 +317,11 @@ export default function QueueCenter() {
     }
 
     const focusRow = (index: number) => {
-        const bounded = Math.max(0, Math.min(filteredJobs.length - 1, index))
+        if (filteredTotal === 0) return
+        const bounded = Math.max(0, Math.min(filteredTotal - 1, index))
+        pendingFocusIndex.current = bounded
         setFocusedIndex(bounded)
         viewportRef.current?.scrollTo({ top: bounded * QUEUE_ROW_HEIGHT, behavior: 'auto' })
-        window.setTimeout(() => {
-            viewportRef.current?.querySelector<HTMLElement>(`[data-queue-index="${bounded}"]`)?.focus()
-        }, 0)
     }
 
     const handleRowKey = (event: React.KeyboardEvent, index: number) => {
@@ -238,7 +336,7 @@ export default function QueueCenter() {
             focusRow(0)
         } else if (event.key === 'End') {
             event.preventDefault()
-            focusRow(filteredJobs.length - 1)
+            focusRow(filteredTotal - 1)
         }
     }
 
@@ -253,7 +351,35 @@ export default function QueueCenter() {
         ? 0
         : Math.round((visibleSummary.progressCurrent / Math.max(1, visibleSummary.progressTotal)) * 100)
     const failureCount = visibleSummary.states.failed + visibleSummary.states.blocked
-    const statusLabel = (state: 'all' | GenerationJobState) => t(`queue.status.${state}`, state)
+    const statusLabel = (state: 'all' | GenerationJobState) => t(
+        `queue.status.${state}`,
+        t('queue.status.unknown', 'Status unavailable'),
+    )
+    const workflowLabel = (workflow: GenerationJobProjection['workflow']) => {
+        switch (workflow) {
+            case 'main': return t('queue.workflow.main', 'Main image')
+            case 'scene': return t('queue.workflow.scene', 'Scene image')
+            case 'style-lab': return t('queue.workflow.styleLab', 'Style Lab')
+        }
+    }
+    // Projection stages are executor-owned IDs shared with queue persistence.
+    // Keep those IDs out of the authoring UI while providing a useful fallback
+    // for a newer executor stage that this client has not learned yet.
+    const stageLabel = (stage: string) => {
+        switch (stage) {
+            case 'queued': return t('queue.stage.queued', 'Waiting')
+            case 'transport': return t('queue.stage.transport', 'Sending request')
+            case 'stream': return t('queue.stage.stream', 'Receiving preview')
+            case 'executor': return t('queue.stage.executor', 'Processing')
+            default: return t('queue.stage.processing', 'Processing')
+        }
+    }
+    const formatEta = (seconds: number | null): string => {
+        if (seconds === null) return t('queue.eta.unknown', '—')
+        if (seconds < 60) return t('queue.eta.seconds', '{{count}} sec', { count: seconds })
+        if (seconds < 3_600) return t('queue.eta.minutes', '{{count}} min', { count: Math.ceil(seconds / 60) })
+        return t('queue.eta.hours', '{{count}} hr', { count: Math.ceil(seconds / 3_600) })
+    }
 
     return (
         <main
@@ -267,8 +393,8 @@ export default function QueueCenter() {
                         <h1 className="text-xl font-semibold">{t('queue.title', 'Queue Center')}</h1>
                         <p className="text-xs text-muted-foreground">
                             {executionAuthority === 'durable'
-                                ? t('queue.executionCurrent', 'Safe background execution')
-                                : t('queue.executionPrevious', 'Previous execution method')}
+                                ? t('queue.executionCurrent', 'Background queue')
+                                : t('queue.executionPrevious', 'Existing Scene queue')}
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -280,8 +406,8 @@ export default function QueueCenter() {
                                 className="min-h-11 rounded-control border border-input bg-canvas px-3 text-sm text-foreground"
                                 aria-label={t('queue.executionMode', 'Execution method')}
                             >
-                                <option value="durable">{t('queue.executionCurrent', 'Safe background execution')}</option>
-                                <option value="legacy">{t('queue.executionPrevious', 'Previous execution method')}</option>
+                                <option value="durable">{t('queue.executionCurrent', 'Background queue')}</option>
+                                <option value="legacy">{t('queue.executionPrevious', 'Existing Scene queue')}</option>
                             </select>
                         </label>
                         <select
@@ -330,7 +456,7 @@ export default function QueueCenter() {
                                 ? <><Pause className="mr-2 h-4 w-4" />{t('queue.pause', 'Pause')}</>
                                 : <><Play className="mr-2 h-4 w-4" />{t('queue.resume', 'Resume')}</>}
                         </Button>
-                        <Button variant="outline" disabled={selectedBatch === null || busy} onClick={() => void retryFailed()}>
+                        <Button variant="outline" disabled={busy || !hasRetryableFailures} onClick={() => void retryFailed()}>
                             <RotateCcw className="mr-2 h-4 w-4" />{t('queue.retryFailed', 'Retry failed items')}
                         </Button>
                         <Button
@@ -348,16 +474,16 @@ export default function QueueCenter() {
                 <section
                     className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/30 px-3 py-2 sm:px-5"
                     data-testid="legacy-queue-migration"
-                    aria-label="Legacy queue migration"
+                    aria-label={t('queue.existingQueueTransfer', 'Existing Scene queue transfer')}
                 >
                     <div className="min-w-0 text-xs">
                         <p className="font-medium">
-                            {t('queue.legacyPending', '{{count}} legacy Scene items are pending.', {
+                            {t('queue.legacyPending', '{{count}} existing Scene items are waiting.', {
                                 count: legacyQueueCount,
                             })}
                         </p>
                         <p className="text-muted-foreground">
-                            {t('queue.legacyRetained', 'Conversion snapshots current parameters and keeps the legacy counts for rollback.')}
+                            {t('queue.legacyRetained', 'Transfer records current parameters and keeps existing item counts available for rollback.')}
                         </p>
                     </div>
                     <Button
@@ -366,12 +492,15 @@ export default function QueueCenter() {
                         onClick={() => setConversionOpen(true)}
                         className="min-h-11"
                     >
-                        {t('queue.convertLegacy', 'Convert to durable jobs')}
+                        {t('queue.convertLegacy', 'Move to background queue')}
                     </Button>
                 </section>
             )}
 
-            <section className="shrink-0 border-b border-border px-3 py-3 sm:px-5" aria-label="Queue summary">
+            <section
+                className="shrink-0 border-b border-border px-3 py-3 sm:px-5"
+                aria-label={t('queue.summary', 'Queue summary')}
+            >
                 <dl className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs sm:grid-cols-6 lg:grid-cols-10">
                     {(['queued', 'running', 'succeeded', 'failed', 'cancelled', 'skipped', 'blocked'] as const).map(state => (
                         <div key={state} className="min-w-0">
@@ -380,13 +509,13 @@ export default function QueueCenter() {
                         </div>
                     ))}
                     <div><dt className="text-muted-foreground">{t('queue.progress', 'Progress')}</dt><dd className="font-mono text-sm">{progressPercent}%</dd></div>
-                    <div><dt className="text-muted-foreground">{t('queue.speed', 'Processing speed')}</dt><dd className="font-mono text-sm">{rate.throughput.toFixed(1)}/m</dd></div>
+                    <div><dt className="text-muted-foreground">{t('queue.speed', 'Processing speed')}</dt><dd className="font-mono text-sm">{t('queue.ratePerMinute', '{{rate}}/min', { rate: rate.throughput.toFixed(1) })}</dd></div>
                     <div><dt className="text-muted-foreground">{t('queue.remainingTime', 'Time remaining')}</dt><dd className="font-mono text-sm">{formatEta(rate.eta)}</dd></div>
                 </dl>
                 <div
                     className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"
                     role="progressbar"
-                    aria-label="Total queue progress"
+                    aria-label={t('queue.totalProgress', 'Total queue progress')}
                     aria-valuemin={0}
                     aria-valuemax={100}
                     aria-valuenow={progressPercent}
@@ -417,7 +546,7 @@ export default function QueueCenter() {
                 >
                     {STATUS_FILTERS.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}
                 </select>
-                <span className="text-xs text-muted-foreground">{t('queue.jobs', '{{count}} jobs', { count: filteredJobs.length })}</span>
+                <span className="text-xs text-muted-foreground">{t('queue.jobs', '{{count}} jobs', { count: filteredTotal })}</span>
             </div>
 
             <div
@@ -425,16 +554,15 @@ export default function QueueCenter() {
                 className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
                 onScroll={event => setScrollTop(event.currentTarget.scrollTop)}
                 role="list"
-                aria-label="Generation jobs"
+                aria-label={t('queue.jobsList', 'Generation jobs')}
             >
-                {filteredJobs.length === 0 ? (
+                {filteredTotal === 0 ? (
                     <div className="flex min-h-48 items-center justify-center px-4 text-center text-sm text-muted-foreground">
                         {t('queue.empty', 'No jobs match this view.')}
                     </div>
                 ) : (
-                    <div className="relative w-full" style={{ height: filteredJobs.length * QUEUE_ROW_HEIGHT }}>
-                        {filteredJobs.slice(windowRange.start, windowRange.end).map((job, offset) => {
-                            const index = windowRange.start + offset
+                    <div className="relative w-full" style={{ height: filteredTotal * QUEUE_ROW_HEIGHT }}>
+                        {visibleWindowItems.map(({ job, index }) => {
                             const percent = job.progress.total <= 0
                                 ? 0
                                 : Math.min(100, Math.round((job.progress.current / job.progress.total) * 100))
@@ -442,7 +570,7 @@ export default function QueueCenter() {
                                 <div
                                     key={job.id}
                                     role="listitem"
-                                    aria-setsize={filteredJobs.length}
+                                    aria-setsize={filteredTotal}
                                     aria-posinset={index + 1}
                                     tabIndex={focusedIndex === index ? 0 : -1}
                                     data-queue-index={index}
@@ -465,22 +593,30 @@ export default function QueueCenter() {
                                             <span className="truncate font-mono text-xs" title={job.id}>{job.id}</span>
                                         </div>
                                         <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
-                                            <span>{job.workflow}{job.sceneId ? ` · ${job.sceneId}` : ''}</span>
+                                            <span>{workflowLabel(job.workflow)}{job.sceneId ? ` · ${job.sceneId}` : ''}</span>
                                             <span>{t('queue.attempt', 'Attempt {{current}}/{{max}}', { current: job.attemptCount, max: job.maxAttempts })}</span>
-                                            <span>{job.progress.stage} · {percent}%</span>
+                                            <span>{stageLabel(job.progress.stage)} · {percent}%</span>
                                         </div>
-                                        <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted" aria-label={`Item progress ${percent}%`}>
+                                        <div
+                                            className="mt-1 h-1 overflow-hidden rounded-full bg-muted"
+                                            aria-label={t('queue.itemProgress', 'Item progress {{percent}}%', { percent })}
+                                        >
                                             <div className="h-full bg-primary" style={{ width: `${percent}%` }} />
                                         </div>
                                     </div>
                                     {job.lastDiagnosticEventId !== null && (
-                                        <Button variant="ghost" size="icon" aria-label="Open job diagnostic" onClick={() => showDiagnostic(job)}>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            aria-label={t('queue.openJobDetails', 'Open job details')}
+                                            onClick={() => showDiagnostic(job)}
+                                        >
                                             <AlertCircle className="h-4 w-4" />
                                         </Button>
                                     )}
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon" aria-label="Job actions">
+                                            <Button variant="ghost" size="icon" aria-label={t('queue.jobActions', 'Job actions')}>
                                                 <EllipsisVertical className="h-4 w-4" />
                                             </Button>
                                         </DropdownMenuTrigger>
@@ -490,7 +626,7 @@ export default function QueueCenter() {
                                                 disabled={isTerminalJobState(job.state)}
                                                 onSelect={() => void runAction(() => coordinator.cancelJob(job.id))}
                                             >
-                                                <XCircle className="mr-2 h-4 w-4" />Cancel
+                                                <XCircle className="mr-2 h-4 w-4" />{t('queue.cancelJob', 'Cancel job')}
                                             </DropdownMenuItem>
                                             <DropdownMenuItem
                                                 className="min-h-11"
@@ -501,10 +637,10 @@ export default function QueueCenter() {
                                                     expectedVersion: job.version,
                                                 }))}
                                             >
-                                                <SkipForward className="mr-2 h-4 w-4" />Skip
+                                                <SkipForward className="mr-2 h-4 w-4" />{t('queue.skipJob', 'Skip job')}
                                             </DropdownMenuItem>
                                             <DropdownMenuItem className="min-h-11" disabled={job.lastDiagnosticEventId === null} onSelect={() => showDiagnostic(job)}>
-                                                <AlertCircle className="mr-2 h-4 w-4" />Diagnostic
+                                                <AlertCircle className="mr-2 h-4 w-4" />{t('queue.viewDetails', 'View details')}
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
@@ -517,12 +653,12 @@ export default function QueueCenter() {
             <ConfirmDialog
                 open={conversionOpen}
                 onOpenChange={setConversionOpen}
-                title={t('queue.convertLegacyTitle', 'Convert legacy Scene queue?')}
+                title={t('queue.convertLegacyTitle', 'Move existing Scene queue?')}
                 description={t(
                     'queue.convertLegacyDescription',
-                    'Current parameters and required resources will be snapshotted into durable jobs. Existing queue counts will remain available for rollback.',
+                    'Current parameters and required resources will be captured for background jobs. Existing item counts remain available for rollback.',
                 )}
-                confirmText={t('queue.convertLegacyConfirm', 'Convert')}
+                confirmText={t('queue.convertLegacyConfirm', 'Move jobs')}
                 cancelText={t('common.cancel', 'Cancel')}
                 onConfirm={convertLegacyQueue}
             />

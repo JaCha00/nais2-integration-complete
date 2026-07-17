@@ -165,13 +165,33 @@ export function CompositionCommandBar({
             </div>
 
             <div className="flex min-h-11 min-w-0 items-center gap-1">
+                {/* Main and Scene intentionally omit persistent desktop rails to protect canvas width.
+                    Keep these controlled-sheet triggers available at every breakpoint so both panels remain reachable. */}
                 {onOpenModules && (
-                    <Button type="button" variant="ghost" size="icon" className="shrink-0 2xl:hidden" disabled={disabled} aria-label={labels.modules} onClick={onOpenModules}>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0"
+                        disabled={disabled}
+                        aria-label={labels.modules}
+                        data-testid="composition-open-modules"
+                        onClick={onOpenModules}
+                    >
                         <Layers3 className="h-4 w-4" aria-hidden="true" />
                     </Button>
                 )}
                 {onOpenInspector && (
-                    <Button type="button" variant="ghost" size="icon" className="shrink-0 2xl:hidden" disabled={disabled} aria-label={labels.inspector} onClick={onOpenInspector}>
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0"
+                        disabled={disabled}
+                        aria-label={labels.inspector}
+                        data-testid="composition-open-inspector"
+                        onClick={onOpenInspector}
+                    >
                         <PanelRight className="h-4 w-4" aria-hidden="true" />
                     </Button>
                 )}

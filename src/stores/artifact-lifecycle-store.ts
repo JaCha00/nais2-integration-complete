@@ -5,6 +5,12 @@ export interface GeneratedArtifactNotice {
     readonly path: string
     /** Memory-only previews may carry bytes; durable artifacts are re-read by path. */
     readonly data?: string
+    /** Optional durable identity supplied by queue-backed output producers. */
+    readonly artifactId?: string
+    /** Optional queue origin retained for history-to-organizer navigation. */
+    readonly sourceJobId?: string
+    /** Optional scene origin; Main output intentionally leaves this absent. */
+    readonly sourceSceneId?: string
 }
 
 interface ArtifactLifecycleState {

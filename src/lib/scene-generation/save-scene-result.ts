@@ -30,6 +30,10 @@ export interface SaveSceneResultOptions {
     outputTransactionId?: string
     sourceJobId?: string
     commitDurable?: (result: OutputWriteResult) => void | Promise<void>
+    /** Queue owners register the same immutable artifact before committing the Job. */
+    registerArtifact?: (result: OutputWriteResult) => Promise<SceneOutputArtifactLineage | null>
+    /** Reverses only a record created by the current failed output workflow. */
+    rollbackArtifact?: () => void | Promise<void>
     /** Immutable enqueue-time output context for durable execution. */
     outputContext?: {
         useAbsoluteScenePath: boolean
@@ -37,6 +41,12 @@ export interface SaveSceneResultOptions {
         presetName: string
         sceneName: string
     }
+}
+
+export interface SceneOutputArtifactLineage {
+    readonly artifactId: string
+    readonly sourceJobId: string
+    readonly sourceSceneId: string | null
 }
 
 const toDataUrl = (imageData: string, mimeType: string): string =>
@@ -144,6 +154,7 @@ export async function saveSceneResult(
     let historyId: string | null = null
     let committedPath: string | null = null
     let workflowCommitted = false
+    let artifactLineage: SceneOutputArtifactLineage | null = null
     try {
         const output = await getRuntimeOutputWriter().write({
             ...(options.outputTransactionId === undefined
@@ -151,6 +162,7 @@ export async function saveSceneResult(
                 : { transactionId: options.outputTransactionId }),
             ...(options.sourceJobId === undefined ? {} : { sourceJobId: options.sourceJobId }),
             terminalWorkflowCommit: options.sourceJobId !== undefined,
+            includeFinalImageFacts: options.registerArtifact !== undefined,
             destination: {
                 ...(params.portableOutputDirectory === undefined
                     ? {}
@@ -202,6 +214,7 @@ export async function saveSceneResult(
                     throw new Error('Fragment sequence changed before Scene output commit')
                 }
 
+                artifactLineage = await options.registerArtifact?.(outputResult) ?? null
                 committedPath = outputResult.path
                 useSceneStore.getState().addImageToScene(ctx.activePresetId, scene.id, outputResult.path)
                 historyId = `${Date.now()}_${Math.floor(Math.random() * 10000)}`
@@ -213,12 +226,28 @@ export async function saveSceneResult(
                     seed: params.seed,
                     timestamp: new Date(),
                     sentPayloadSummary: options.sentPayloadSummary,
+                    ...(artifactLineage === null
+                        ? {}
+                        : {
+                            artifactId: artifactLineage.artifactId,
+                            sourceJobId: artifactLineage.sourceJobId,
+                            ...(artifactLineage.sourceSceneId === null ? {} : { sourceSceneId: artifactLineage.sourceSceneId }),
+                        }),
                 })
-                publishGeneratedArtifact({ path: outputResult.path })
+                publishGeneratedArtifact({
+                    path: outputResult.path,
+                    ...(artifactLineage === null
+                        ? {}
+                        : {
+                            artifactId: artifactLineage.artifactId,
+                            sourceJobId: artifactLineage.sourceJobId,
+                            ...(artifactLineage.sourceSceneId === null ? {} : { sourceSceneId: artifactLineage.sourceSceneId }),
+                        }),
+                })
                 await options.commitDurable?.(outputResult)
                 workflowCommitted = true
             },
-            rollbackWorkflow: () => {
+            rollbackWorkflow: async () => {
                 workflowCommitted = false
                 if (committedPath !== null) {
                     useSceneStore.setState(state => ({
@@ -237,6 +266,8 @@ export async function saveSceneResult(
                         history: state.history.filter(item => item.id !== historyId),
                     }))
                 }
+                await options.rollbackArtifact?.()
+                artifactLineage = null
             },
         })
         if (output.status === 'cancelled') return false

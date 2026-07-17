@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { useEffect, useState, useCallback, memo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef, memo } from 'react'
 import { Clock, Trash2, FolderOpen, RefreshCw, FileSearch, Copy, RotateCcw, Save, Users, Image as ImageIcon, Paintbrush, Maximize2, Film, Zap, PenTool, Pencil, Droplets, Smile, Sparkles, Loader2, FolderKanban, Images } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useGenerationStore } from '@/stores/generation-store'
@@ -33,7 +33,14 @@ import {
 } from '@/components/ui/context-menu'
 import { InpaintingDialog } from '@/components/tools/InpaintingDialog'
 import { queueOrganizerHandoff } from '@/services/organizer/handoff'
-import { publishGeneratedArtifact, useArtifactLifecycleStore } from '@/stores/artifact-lifecycle-store'
+import { buildArtifactHistoryShadow, artifactHistoryPathKey } from '@/services/organizer/artifact-history-shadow'
+import { getRuntimeArtifactRepository } from '@/services/organizer/runtime'
+import { createRuntimeOutputPlatformAdapter } from '@/services/output/tauri-output-adapter'
+import {
+    publishGeneratedArtifact,
+    type GeneratedArtifactNotice,
+    useArtifactLifecycleStore,
+} from '@/stores/artifact-lifecycle-store'
 
 // Convert ArrayBuffer to base64 without stack overflow
 const arrayBufferToBase64 = (buffer: Uint8Array): string => {
@@ -51,7 +58,12 @@ interface SavedImage {
     timestamp: number
     type: 'main' | 'i2i' | 'inpaint' | 'upscale' | 'scene' | 'lineart' | 'sketch' | 'colorize' | 'emotion' | 'declutter'
     isTemporary?: boolean
+    artifactId?: string
+    sourceJobId?: string
+    sourceSceneId?: string
 }
+
+type SavedImageLineage = Pick<GeneratedArtifactNotice, 'artifactId' | 'sourceJobId' | 'sourceSceneId'>
 
 // Memoized HistoryImageItem - 불필요한 리렌더링 방지
 interface HistoryImageItemProps {
@@ -266,6 +278,9 @@ export function HistoryPanel() {
     const libraryItems = useLibraryStore(state => state.items)
     const addLibraryItem = useLibraryStore(state => state.addItem)
     const isTauriRuntime = isTauri()
+    const artifactRepository = useMemo(() => getRuntimeArtifactRepository(), [])
+    const outputPlatform = useMemo(() => createRuntimeOutputPlatformAdapter(), [])
+    const historyRefreshId = useRef(0)
 
 
 
@@ -297,7 +312,7 @@ export function HistoryPanel() {
 
     // Add new image instantly to history
     // Memory optimization: Use convertFileSrc for file-based images, only cache Base64 for temporary (memory://) images
-    const addNewImage = useCallback((imagePath: string, imageData?: string) => {
+    const addNewImage = useCallback((imagePath: string, imageData?: string, lineage?: SavedImageLineage) => {
         const timestamp = Date.now()
         const isTemporary = imagePath.startsWith('memory://')
         const name = imagePath.split(/[/\\]/).pop() || `NAIS_${timestamp}.png`
@@ -315,7 +330,8 @@ export function HistoryPanel() {
                                     name.includes('COLORIZE_') ? 'colorize' :
                                         name.includes('EMOTION_') ? 'emotion' :
                                             name.includes('DECLUTTER_') ? 'declutter' : 'main',
-            isTemporary
+            isTemporary,
+            ...lineage,
         }
 
         // Instantly add to list
@@ -383,6 +399,7 @@ export function HistoryPanel() {
 
     // Load images from save path
     const loadSavedImages = async () => {
+        const requestId = ++historyRefreshId.current
         setIsLoading(true)
         if (!isTauriRuntime) {
             setSavedImages(prev => prev.filter(image => image.isTemporary))
@@ -590,6 +607,23 @@ export function HistoryPanel() {
                 return combined.sort((a, b) => b.timestamp - a.timestamp)
             })
 
+            // Disk scan remains the current History authority. The durable
+            // Artifact repository only reattaches Queue identity after an app
+            // restart, and runs after the scan is visible so a large Organizer
+            // catalog cannot delay the user's local result grid.
+            void buildArtifactHistoryShadow(limitedImages, artifactRepository, outputPlatform)
+                .then(shadow => {
+                    if (requestId !== historyRefreshId.current) return
+                    setSavedImages(prev => prev.map(image => {
+                        if (image.isTemporary) return image
+                        const lineage = shadow.lineageByPath.get(artifactHistoryPathKey(image.path))
+                        return lineage === undefined ? image : { ...image, ...lineage }
+                    }))
+                })
+                .catch(error => {
+                    console.warn('Artifact History shadow is unavailable:', error)
+                })
+
             // NOTE: Removed pre-loading of thumbnails using readFile to prevent UI lag.
             // Using convertFileSrc in the render loop is much more efficient as it uses native asset handling.
         } catch (error) {
@@ -605,11 +639,18 @@ export function HistoryPanel() {
 
     const latestGeneratedArtifact = useArtifactLifecycleStore(state => state.latestGeneratedArtifact)
 
-    // Output producers publish through a typed transient store. Directory scans
-    // remain limited to initial load/manual refresh for large histories.
+    // Output producers publish through a typed transient store. Queue-backed
+    // notices include their durable identity so this transient History item can
+    // hand the same artifact to Organizer; legacy and memory-only producers
+    // continue without lineage. Directory scans remain limited to initial
+    // load/manual refresh for large histories.
     useEffect(() => {
         if (latestGeneratedArtifact === null) return
-        addNewImage(latestGeneratedArtifact.path, latestGeneratedArtifact.data)
+        addNewImage(latestGeneratedArtifact.path, latestGeneratedArtifact.data, {
+            artifactId: latestGeneratedArtifact.artifactId,
+            sourceJobId: latestGeneratedArtifact.sourceJobId,
+            sourceSceneId: latestGeneratedArtifact.sourceSceneId,
+        })
     }, [addNewImage, latestGeneratedArtifact])
 
     // PERFORMANCE: Removed auto-refresh after every generation.
@@ -967,7 +1008,11 @@ export function HistoryPanel() {
 
     const handleSendToOrganizer = (image: SavedImage) => {
         if (image.isTemporary) return
-        queueOrganizerHandoff({ path: image.path, fileName: image.name })
+        queueOrganizerHandoff({
+            path: image.path,
+            fileName: image.name,
+            artifactId: image.artifactId,
+        })
         navigate('/organizer')
     }
 

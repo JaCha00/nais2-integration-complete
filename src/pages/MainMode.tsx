@@ -141,7 +141,6 @@ export default function MainMode() {
     const characterImages = useCharacterStore(state => state.characterImages)
     const vibeImages = useCharacterStore(state => state.vibeImages)
     const isMobileWorkspace = useMediaQuery('(max-width: 767px)')
-    const isDockedWorkspace = useMediaQuery('(min-width: 1536px)')
     const [moduleSheetOpen, setModuleSheetOpen] = useState(false)
     const [inspectorSheetOpen, setInspectorSheetOpen] = useState(false)
     const [resolvedSheetOpen, setResolvedSheetOpen] = useState(false)
@@ -593,7 +592,9 @@ export default function MainMode() {
 
     const handleSelectModule = (moduleId: string) => {
         setSelectedModuleId(moduleId)
-        if (!isDockedWorkspace) {
+        // The Main workspace keeps its desktop rails disabled, so a module chosen
+        // from its sheet must hand off to the Inspector sheet at every viewport.
+        if (moduleSheetOpen) {
             inspectorSheetTriggerRef.current = currentTrigger()
             setInspectorSheetOpen(true)
         }

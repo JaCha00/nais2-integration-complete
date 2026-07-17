@@ -136,6 +136,14 @@ import { assessPortableCompositionPlan } from '@/platform/portable-resources'
 
 const SCENE_COMPOSITION_MODES: readonly SceneCompositionMode[] = ['legacy', 'shadow', 'v2']
 
+// Persisted mode values remain stable rollout IDs; the workspace presents the
+// user-facing purpose of each path so normal Scene authoring does not expose internals.
+const SCENE_COMPOSITION_MODE_LABEL_KEYS: Record<SceneCompositionMode, { key: string; fallback: string }> = {
+    legacy: { key: 'composition.mode.previous', fallback: 'Previous generation engine' },
+    shadow: { key: 'composition.mode.compatibility', fallback: 'Compatibility comparison' },
+    v2: { key: 'composition.mode.current', fallback: 'Current generation engine' },
+}
+
 const dropAnimation = {
     sideEffects: defaultDropAnimationSideEffects({
         styles: {
@@ -451,7 +459,7 @@ export default function SceneMode() {
             : compositionWarningCount > 0
                 ? { severity: 'warning', warningCount: compositionWarningCount }
                 : sceneCompositionMode === 'legacy'
-                    ? { severity: 'disabled', label: 'legacy' }
+                    ? { severity: 'disabled', label: t('composition.validation.legacy', 'Previous generation mode') }
                     : { severity: 'valid' }
     const estimatedCost = scenes.reduce((sum, scene) => {
         if (scene.queueCount <= 0) return sum
@@ -852,7 +860,13 @@ export default function SceneMode() {
             mode={{
                 value: sceneCompositionMode,
                 label: t('scene.composition.mode', 'Mode'),
-                options: SCENE_COMPOSITION_MODES.map(mode => ({ value: mode, label: mode })),
+                options: SCENE_COMPOSITION_MODES.map(mode => ({
+                    value: mode,
+                    label: t(
+                        SCENE_COMPOSITION_MODE_LABEL_KEYS[mode].key,
+                        SCENE_COMPOSITION_MODE_LABEL_KEYS[mode].fallback,
+                    ),
+                })),
                 onChange: value => setSceneCompositionMode(value as SceneCompositionMode),
                 disabled: isGenerating,
             }}

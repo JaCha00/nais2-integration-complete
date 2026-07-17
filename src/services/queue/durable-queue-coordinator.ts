@@ -83,9 +83,37 @@ function requiresSingleWorker(job: GenerationJob): boolean {
     return parameters.queueExecution.streaming === true && parameters.queueExecution.sourceEdit !== true
 }
 
-function executionLimit(workflow: GenerationWorkflow, singleWorker: boolean): number {
-    if (workflow !== 'scene' || singleWorker) return 1
-    return 2
+function isMainSequenceDependent(job: GenerationJob): boolean {
+    if (job.workflow !== 'main') return false
+    const parameters = job.snapshot.parameters
+    if (!isRecord(parameters) || !isRecord(parameters.mainWorkflow)) return false
+    const proposal = parameters.mainWorkflow.sequenceCommitProposal
+    // Main snapshot parameters own the durable proposal; a non-empty change list links
+    // this job to lower-ordinal proposals whose CAS commits must complete first.
+    return isRecord(proposal) && Array.isArray(proposal.changes) && proposal.changes.length > 0
+}
+
+type SequenceDependencyDisposition = 'ready' | 'wait' | 'skip'
+
+function sequenceDependencyDisposition(
+    candidate: GenerationJob,
+    batchJobs: readonly GenerationJob[],
+): SequenceDependencyDisposition {
+    let waitsForPredecessor = false
+    for (const predecessor of batchJobs) {
+        if (predecessor.ordinal >= candidate.ordinal || !isMainSequenceDependent(predecessor)) continue
+        if (predecessor.state === 'failed'
+            || predecessor.state === 'cancelled'
+            || predecessor.state === 'skipped') return 'skip'
+        if (predecessor.state !== 'succeeded') waitsForPredecessor = true
+    }
+    return waitsForPredecessor ? 'wait' : 'ready'
+}
+
+function executionLimit(workflow: GenerationWorkflow): number {
+    // Token slots are shared by Main and Scene, while provider safety limits stay
+    // workflow-local: Main commits one durable proposal at a time and Scene may use two slots.
+    return workflow === 'scene' ? 2 : 1
 }
 
 function classifyFailure(error: unknown): QueueExecutionError {
@@ -234,23 +262,46 @@ export class DurableQueueCoordinator {
         const slots = this.tokenProvider()
             .filter(slot => slot.token.trim().length > 0)
             .filter(slot => ![...this.active.values()].some(active => active.slotId === slot.slotId))
-        if (slots.length === 0) return
 
         let cursor: string | null = null
         let slotIndex = 0
+        const batchJobsById = new Map<string, GenerationJob[]>()
         do {
             const page = await this.repository.listJobs({ states: ['queued'], cursor, limit: 250 })
             for (const candidate of page.items) {
-                if (slotIndex >= slots.length) return
-                if (candidate.cancelRequestedAt !== null || Date.parse(candidate.readyAt) > Date.parse(this.now())) continue
+                if (candidate.cancelRequestedAt !== null) continue
+                if (isMainSequenceDependent(candidate)) {
+                    let batchJobs = batchJobsById.get(candidate.batchId)
+                    if (batchJobs === undefined) {
+                        batchJobs = await this.listBatchJobs(candidate.batchId)
+                        batchJobsById.set(candidate.batchId, batchJobs)
+                    }
+                    const disposition = sequenceDependencyDisposition(candidate, batchJobs)
+                    if (disposition === 'wait') continue
+                    if (disposition === 'skip') {
+                        // IndexedDB's queued->skipped transition terminalizes the dependent tail
+                        // without leasing a provider token; later jobs observe the same failed ancestor.
+                        await this.repository.transitionJob({
+                            jobId: candidate.id,
+                            to: 'skipped',
+                            now: this.now(),
+                            expectedVersion: candidate.version,
+                        })
+                        continue
+                    }
+                }
+                if (Date.parse(candidate.readyAt) > Date.parse(this.now())) continue
+                if (slotIndex >= slots.length) continue
                 const activeExecutions = [...this.active.values()]
-                const activeWorkflow = activeExecutions[0]?.job.workflow
                 const activeSingle = activeExecutions.some(execution => execution.singleWorker)
-                if (activeWorkflow !== undefined && candidate.workflow !== activeWorkflow) continue
                 const singleWorker = requiresSingleWorker(candidate)
-                const current = this.active.size
-                if (activeSingle || (singleWorker && current > 0)) continue
-                if (current >= executionLimit(candidate.workflow, singleWorker)) return
+                const activeForWorkflow = activeExecutions.filter(execution => (
+                    execution.job.workflow === candidate.workflow
+                )).length
+                // Streaming executions remain globally exclusive, but normal Main and Scene work
+                // may share vacant token slots up to their independent provider limits.
+                if (activeSingle || (singleWorker && activeExecutions.length > 0)) continue
+                if (activeForWorkflow >= executionLimit(candidate.workflow)) continue
 
                 const slot = slots[slotIndex]
                 const owner = `${this.ownerPrefix}:${slot.slotId}`
@@ -263,10 +314,23 @@ export class DurableQueueCoordinator {
                 if (leased === null) continue
                 slotIndex += 1
                 this.launch(leased, slot, owner, singleWorker)
-                if (singleWorker || leased.workflow !== 'scene') return
+                if (singleWorker) return
             }
             cursor = page.nextCursor
-        } while (cursor !== null && slotIndex < slots.length)
+        } while (cursor !== null)
+    }
+
+    private async listBatchJobs(batchId: string): Promise<GenerationJob[]> {
+        const jobs: GenerationJob[] = []
+        let cursor: string | null = null
+        do {
+            // The repository batch index is the durable authority across retries and restarts;
+            // paging it prevents a readyAt-filtered queue scan from hiding a predecessor.
+            const page = await this.repository.listJobs({ batchId, cursor, limit: 250 })
+            jobs.push(...page.items)
+            cursor = page.nextCursor
+        } while (cursor !== null)
+        return jobs
     }
 
     private launch(job: GenerationJob, slot: QueueTokenSlot, owner: string, singleWorker: boolean): void {

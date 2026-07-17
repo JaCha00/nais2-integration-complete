@@ -55,6 +55,19 @@ describe('Scene composition workspace information architecture', () => {
         expect(editAction).toBeLessThan(dropdownStart)
     })
 
+    it('keeps rollout mode IDs internal while localizing Scene mode and validation labels', async () => {
+        const sceneMode = await source('src/pages/SceneMode.tsx')
+
+        expect(sceneMode).toContain("const SCENE_COMPOSITION_MODES: readonly SceneCompositionMode[] = ['legacy', 'shadow', 'v2']")
+        expect(sceneMode).toContain("legacy: { key: 'composition.mode.previous', fallback: 'Previous generation engine' }")
+        expect(sceneMode).toContain("shadow: { key: 'composition.mode.compatibility', fallback: 'Compatibility comparison' }")
+        expect(sceneMode).toContain("v2: { key: 'composition.mode.current', fallback: 'Current generation engine' }")
+        expect(sceneMode).toContain("label: t('composition.validation.legacy', 'Previous generation mode')")
+        expect(sceneMode).toContain('label: t(\n                        SCENE_COMPOSITION_MODE_LABEL_KEYS[mode].key,')
+        expect(sceneMode).not.toContain('options: SCENE_COMPOSITION_MODES.map(mode => ({ value: mode, label: mode }))')
+        expect(sceneMode).not.toContain("label: 'legacy'")
+    })
+
     it('keeps import/export/rotation/queue grouped while preserving the worker rollback seam', async () => {
         const sceneMode = await source('src/pages/SceneMode.tsx')
         const generationHook = await source('src/hooks/useSceneGeneration.ts')

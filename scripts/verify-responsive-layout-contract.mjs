@@ -321,6 +321,8 @@ async function collectCompositionShellReport(page, route) {
             promptDock: visibleRect('#nais2-prompt-dock'),
             dock: visibleRect('[data-testid="composition-mobile-command-dock"], [data-testid="main-command-dock"]', 'fixed'),
             commandBar: visibleRect('[data-testid="composition-command-bar"]'),
+            moduleTrigger: visibleRect('[data-testid="composition-command-bar"] [data-testid="composition-open-modules"]'),
+            inspectorTrigger: visibleRect('[data-testid="composition-command-bar"] [data-testid="composition-open-inspector"]'),
             moduleStack: visibleRect('[data-testid="composition-module-stack"]'),
             canvas: visibleRect('[data-testid="composition-workspace-canvas"]'),
             inspector: visibleRect('[data-testid="composition-inspector"]'),
@@ -361,6 +363,16 @@ function assertCompositionShell(report, route, viewport) {
             assert.ok(report.promptDock, `${context} must keep the Prompt rail visible`)
             assert.equal(report.moduleStack, null, `${context} keeps Module Stack behind its explicit action to preserve canvas width`)
             assert.equal(report.inspector, null, `${context} keeps Context Inspector behind its explicit action to preserve canvas width`)
+            assert.ok(report.moduleTrigger, `${context} must keep the Module Stack action reachable when its rail is hidden`)
+            assert.ok(report.inspectorTrigger, `${context} must keep the Context Inspector action reachable when its rail is hidden`)
+            assert.ok(
+                report.moduleTrigger.width >= 44 && report.moduleTrigger.height >= 44,
+                `${context} Module Stack action is below 44px (${report.moduleTrigger.width}x${report.moduleTrigger.height})`,
+            )
+            assert.ok(
+                report.inspectorTrigger.width >= 44 && report.inspectorTrigger.height >= 44,
+                `${context} Context Inspector action is below 44px (${report.inspectorTrigger.width}x${report.inspectorTrigger.height})`,
+            )
             assert.ok(report.canvas, `${context} must show the center canvas/grid`)
             assert.ok(report.promptDock.right <= report.canvas.left + 24, `${context} must preserve Prompt rail → canvas ordering`)
             return
@@ -560,6 +572,89 @@ async function assertCompositionSheetFocusReturn(page, route, viewport) {
     )
 }
 
+async function assertWideCompositionPanelAccess(page, route, viewport) {
+    const panels = route === '/'
+        ? [
+            { triggerId: 'composition-open-modules', sheetId: 'main-module-stack-sheet', name: 'Module Stack' },
+            { triggerId: 'composition-open-inspector', sheetId: 'main-composition-inspector-sheet', name: 'Context Inspector' },
+        ]
+        : [
+            { triggerId: 'composition-open-modules', sheetId: 'scene-modules-sheet', name: 'Module Stack' },
+            { triggerId: 'composition-open-inspector', sheetId: 'scene-inspector-sheet', name: 'Scene inspector' },
+        ]
+
+    for (const panel of panels) {
+        const trigger = page.locator(`[data-testid="composition-command-bar"] [data-testid="${panel.triggerId}"]`)
+        const sheet = page.locator(`[data-testid="${panel.sheetId}"]`)
+        await trigger.focus()
+        await trigger.click()
+        await sheet.waitFor({ state: 'visible' })
+        assert.equal(
+            await sheet.evaluate(element => element.contains(document.activeElement)),
+            true,
+            `${route} ${panel.name} did not receive focus @ ${viewport.width}px`,
+        )
+        await page.keyboard.press('Escape')
+        await sheet.waitFor({ state: 'hidden' })
+        const triggerHandle = await trigger.elementHandle()
+        await page.waitForFunction(
+            element => element === document.activeElement,
+            triggerHandle,
+            { timeout: 2_000 },
+        )
+    }
+}
+
+async function assertWideCompositionCoreLoop(page, route, viewport) {
+    const context = `${route} core loop @ ${viewport.width}x${viewport.height}`
+    const promptDock = page.locator('#nais2-prompt-dock')
+    const promptEditor = promptDock.locator('[data-testid="prompt-editor-surface"] textarea')
+    const workspaceSelector = route === '/'
+        ? '[data-testid="main-result-canvas"]'
+        : '[data-testid="scene-grid-workspace"]'
+    const workspace = page.locator(workspaceSelector)
+
+    await promptDock.waitFor({ state: 'visible' })
+    await promptEditor.waitFor({ state: 'visible' })
+    await workspace.waitFor({ state: 'visible' })
+    assert.equal(await promptEditor.isEditable(), true, `${context} prompt editor is not editable`)
+
+    // PromptEditorSurface feeds only the draft store; a one-character local edit
+    // proves the shared dock is usable without invoking its separate provider or
+    // output commands. Restoring the initial draft prevents this smoke from
+    // leaving authored input behind for either composition route.
+    const initialValue = await promptEditor.inputValue()
+    const smokeValue = initialValue === 'x' ? 'y' : 'x'
+    await promptEditor.fill(smokeValue)
+    assert.equal(await promptEditor.inputValue(), smokeValue, `${context} prompt editor did not accept local input`)
+
+    const visibility = await page.evaluate((targetSelector) => {
+        const visibleInViewport = selector => {
+            const element = document.querySelector(selector)
+            if (!element) return false
+            const rect = element.getBoundingClientRect()
+            const style = getComputedStyle(element)
+            return style.display !== 'none' &&
+                style.visibility !== 'hidden' &&
+                rect.width > 1 &&
+                rect.height > 1 &&
+                rect.right > 0 &&
+                rect.left < window.innerWidth &&
+                rect.bottom > 0 &&
+                rect.top < window.innerHeight
+        }
+
+        return {
+            promptDock: visibleInViewport('#nais2-prompt-dock'),
+            workspace: visibleInViewport(targetSelector),
+        }
+    }, workspaceSelector)
+    assert.equal(visibility.promptDock, true, `${context} hides the Prompt dock after editing`)
+    assert.equal(visibility.workspace, true, `${context} hides the result workspace after editing`)
+
+    await promptEditor.fill(initialValue)
+}
+
 async function waitForReady(child) {
     let output = ''
     const started = Date.now()
@@ -703,8 +798,11 @@ async function main() {
                         const mainRect = main?.getBoundingClientRect()
                         const mainDock = document.querySelector('[data-testid="main-command-dock"]')
                         const mainAction = document.querySelector('[data-testid="main-generate-action"]')
+                        const queueActivity = document.querySelector('[data-testid="global-queue-activity"]')
                         const dockRect = mainDock?.getBoundingClientRect()
                         const actionRect = mainAction?.getBoundingClientRect()
+                        const queueActivityRect = queueActivity?.getBoundingClientRect()
+                        const queueActivityStyle = queueActivity ? getComputedStyle(queueActivity) : null
 
                         return {
                             bodyScrollWidth: document.body.scrollWidth,
@@ -716,6 +814,20 @@ async function main() {
                             visibleSidebarCount: asides.filter(aside => aside.visible).length,
                             textareas: visibleTextareas,
                             navTargets,
+                            queueActivity: queueActivityRect && queueActivityStyle
+                                ? {
+                                    visible: queueActivityStyle.display !== 'none'
+                                        && queueActivityStyle.visibility !== 'hidden'
+                                        && queueActivityRect.width > 1
+                                        && queueActivityRect.height > 1,
+                                    width: queueActivityRect.width,
+                                    height: queueActivityRect.height,
+                                    withinViewport: queueActivityRect.left >= -1
+                                        && queueActivityRect.right <= window.innerWidth + 1
+                                        && queueActivityRect.top >= -1
+                                        && queueActivityRect.bottom <= window.innerHeight + 1,
+                                }
+                                : null,
                             mainDock: dockRect && actionRect ? {
                                 bottom: dockRect.bottom,
                                 actionHeight: actionRect.height,
@@ -746,6 +858,16 @@ async function main() {
                             `${route} @ ${viewport.width}px nav target ${index} is too small (${target.width}x${target.height})`,
                         )
                     }
+
+                    assert.ok(report.queueActivity?.visible, `${route} @ ${viewport.width}px must expose the global Queue activity link`)
+                    assert.ok(
+                        report.queueActivity.width >= 44 && report.queueActivity.height >= 44,
+                        `${route} @ ${viewport.width}px global Queue activity link is below 44px (${report.queueActivity.width}x${report.queueActivity.height})`,
+                    )
+                    assert.ok(
+                        report.queueActivity.withinViewport,
+                        `${route} @ ${viewport.width}px global Queue activity link leaves the viewport`,
+                    )
 
                     if (viewport.sidebars === 'hidden') {
                         assert.equal(
@@ -786,6 +908,10 @@ async function main() {
                         )
                         if (viewport.width === 390) {
                             await assertCompositionSheetFocusReturn(page, route, viewport)
+                        }
+                        if (viewport.width === 1536) {
+                            await assertWideCompositionCoreLoop(page, route, viewport)
+                            await assertWideCompositionPanelAccess(page, route, viewport)
                         }
                     }
 

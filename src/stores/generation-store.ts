@@ -3,7 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { indexedDBStorage } from '@/lib/indexed-db'
 import { useAuthStore } from './auth-store'
 import { useSettingsStore } from './settings-store'
-import { generateImage, generateImageStream, type GenerationParams } from '@/services/novelai-api'
+import { type GenerationParams } from '@/services/novelai-api'
+import { executeMainGenerationTransport } from '@/services/generation/main-transport-executor'
 import {
     createCharacterStoreResourceRepository,
     useCharacterStore,
@@ -14,6 +15,12 @@ import {
     createWildcardResolutionSession,
     createStoreFragmentResolverInput,
 } from '@/lib/fragment-processor'
+import {
+    projectFragmentSequenceSnapshot,
+    useFragmentStore,
+    type FragmentLookupRepository,
+    type FragmentSequenceState,
+} from './fragment-store'
 import { createThumbnail } from '@/lib/image-utils'
 import i18n from '@/i18n'
 import { toast } from '@/components/ui/use-toast'
@@ -64,6 +71,10 @@ interface HistoryItem {
     seed: number
     timestamp: Date
     sentPayloadSummary?: string
+    /** Queue-backed history keeps its durable artifact lineage when available. */
+    artifactId?: string
+    sourceJobId?: string
+    sourceSceneId?: string
 }
 
 type CharacterPromptParams = NonNullable<GenerationParams['characterPrompts']>
@@ -173,12 +184,81 @@ function collectStringValues(value: unknown, seen = new Set<object>()): string[]
 async function buildMainFragmentInput(
     mode: 'preview' | 'generate',
     sourceTexts: readonly string[],
+    repository?: FragmentLookupRepository,
 ) {
     return createStoreFragmentResolverInput(sourceTexts, {
         mode,
         strictness: 'compatible',
         maxRecursion: 10,
+        ...(repository === undefined ? {} : { repository }),
     })
+}
+
+interface MainBatchSequencePlanner {
+    readonly repository: FragmentLookupRepository
+    stage(proposal: DeepReadonly<FragmentSequenceCommitProposal> | null): boolean
+}
+
+/**
+ * Main durable enqueue depends on the Fragment store's CAS projection and the
+ * compatibility repository. It exposes a virtual snapshot to every planned
+ * item, then stages each proposal in memory so prompts and expected revisions
+ * advance together while the persisted counters remain unchanged until jobs
+ * actually succeed.
+ */
+function createMainBatchSequencePlanner(): MainBatchSequencePlanner {
+    const store = useFragmentStore.getState()
+    const liveRepository = store.getLookupRepository()
+    const baseLiveRevision = store.getSequenceSnapshot().revision
+    const files = store.files.map(file => ({ ...file }))
+    let sequenceState: FragmentSequenceState = {
+        ...store.sequenceState,
+        counters: { ...store.getSequenceSnapshot().counters },
+    }
+
+    const snapshot = () => projectFragmentSequenceSnapshot({
+        files,
+        sequentialCounters: {},
+        sequenceState,
+    })
+    const assertSourceUnchanged = (): void => {
+        if (useFragmentStore.getState().getSequenceSnapshot().revision !== baseLiveRevision) {
+            throw new Error('Fragment store changed during durable Main batch planning')
+        }
+    }
+
+    return {
+        repository: {
+            findMetadataByPath: path => liveRepository.findMetadataByPath(path),
+            loadDefinitionByPath: async path => {
+                assertSourceUnchanged()
+                return liveRepository.loadDefinitionByPath(path)
+            },
+            getSequenceSnapshot: () => {
+                assertSourceUnchanged()
+                return snapshot()
+            },
+            // Planning never commits. Runtime jobs use the original repository
+            // and their captured proposals after acquiring a sequence lease.
+            commitSequenceProposal: () => false,
+        },
+        stage: proposal => {
+            if (proposal === null || proposal.changes.length === 0) return true
+            const current = snapshot()
+            if (proposal.expectedRevision !== current.revision) return false
+            const counters = { ...current.counters }
+            for (const change of proposal.changes) {
+                if ((counters[change.fragmentId] ?? 0) !== change.expectedCounter) return false
+                counters[change.fragmentId] = change.nextCounter
+            }
+            sequenceState = {
+                ...sequenceState,
+                revision: sequenceState.revision + 1,
+                counters,
+            }
+            return true
+        },
+    }
 }
 
 export function commitMainFragmentSequenceProposal(
@@ -970,6 +1050,9 @@ export const useGenerationStore = create<GenerationState>()(
                 })
                 const sourceImageDigest = mainRuntimeDigest(sourceImage)
                 const maskDigest = mainRuntimeDigest(mask)
+                const batchSequencePlanner = options.capturePrepared === undefined
+                    ? null
+                    : createMainBatchSequencePlanner()
 
                 try {
                     let completedBatchCount = 0
@@ -1012,7 +1095,11 @@ export const useGenerationStore = create<GenerationState>()(
                         let shadowParams: GenerationParams | null = null
                         const legacyFragmentSession = compositionMode === 'v2'
                             ? null
-                            : createWildcardResolutionSession()
+                            : createWildcardResolutionSession({
+                                ...(batchSequencePlanner === null
+                                    ? {}
+                                    : { repository: batchSequencePlanner.repository }),
+                            })
 
                         if (compositionMode !== 'legacy') {
                             const assetProfile = useAssetModuleStore.getState().profile
@@ -1042,6 +1129,7 @@ export const useGenerationStore = create<GenerationState>()(
                                     ]),
                                     ...effectiveAssetFragmentSources,
                                 ],
+                                batchSequencePlanner?.repository,
                             )
                             if (get().isCancelled || get().generationSessionId !== sessionId) break
 
@@ -1382,6 +1470,12 @@ export const useGenerationStore = create<GenerationState>()(
                                 v2Output?.fileName ?? modulePlan?.output.fileName,
                                 fileExt,
                             )
+                            // The durable adapter depends on the virtual CAS accepting this
+                            // proposal before it materializes a snapshot; staging first keeps
+                            // rejected sequence state out of a batch that could later be stored.
+                            if (!batchSequencePlanner?.stage(generationSequenceProposal)) {
+                                throw new Error('Sequential fragment proposal could not be staged for durable Main batch')
+                            }
                             await options.capturePrepared({
                                 params: generationParams,
                                 finalPrompt,
@@ -1414,24 +1508,28 @@ export const useGenerationStore = create<GenerationState>()(
 
                         if (!token) throw new Error('Execution credential is unavailable')
 
-                        let result
-                        const streamMimeType = imageFormat === 'webp' ? 'image/webp' : 'image/png'
                         if (canUseStreaming) {
                             console.log('[Generate] Using streaming API...')
-                            result = await generateImageStream(token, generationParams, (progress, partialImage) => {
-                                if (get().isCancelled || get().generationSessionId !== sessionId) return
-                                // Update preview image directly (no null clearing - causes flicker)
-                                if (partialImage) {
-                                    set({ streamProgress: progress, previewImage: `data:${streamMimeType};base64,${partialImage}` })
+                        } else {
+                            console.log('[Generate] Using standard API...')
+                        }
+                        const result = await executeMainGenerationTransport({
+                            token,
+                            params: generationParams,
+                            imageFormat,
+                            streaming: canUseStreaming,
+                            signal: abortController.signal,
+                            shouldPublishProgress: () => !(get().isCancelled || get().generationSessionId !== sessionId),
+                            onProgress: (progress, previewImage) => {
+                                // The store owns session state; this executor only normalizes provider previews.
+                                if (previewImage) {
+                                    set({ streamProgress: progress, previewImage })
                                 } else {
                                     set({ streamProgress: progress })
                                 }
-                            }, abortController.signal)
-                            set({ streamProgress: 0 })
-                        } else {
-                            console.log('[Generate] Using standard API...')
-                            result = await generateImage(token, generationParams, abortController.signal)
-                        }
+                            },
+                        })
+                        if (canUseStreaming) set({ streamProgress: 0 })
 
                         // Check if cancelled or session changed after API call
                         if (get().isCancelled || get().generationSessionId !== sessionId) {

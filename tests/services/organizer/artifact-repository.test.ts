@@ -111,6 +111,29 @@ describe('Organizer artifact repository', () => {
         expect(second.nextCursor).toBeNull()
     })
 
+    it('removes only an untouched original when an owning output transaction rolls back', async () => {
+        const repo = repository('rollback-guard')
+        const record = await putOriginal(repo)
+
+        await expect(repo.removeOriginalIfUnmodified({
+            artifactId: record.artifactId,
+            file: record.original.file,
+            contentChecksum: record.contentChecksum,
+            size: record.original.size,
+        })).resolves.toBe(true)
+        await expect(repo.get(record.artifactId)).resolves.toBeNull()
+
+        const retained = await putOriginal(repo, 'artifact-retained')
+        await repo.addDistribution(retained.artifactId, variant(), NOW)
+        await expect(repo.removeOriginalIfUnmodified({
+            artifactId: retained.artifactId,
+            file: retained.original.file,
+            contentChecksum: retained.contentChecksum,
+            size: retained.original.size,
+        })).resolves.toBe(false)
+        await expect(repo.get(retained.artifactId)).resolves.not.toBeNull()
+    })
+
     it('rejects raw-path/secret-shaped persistence and dangling remote links', async () => {
         const repo = repository('safe-projection')
         await putOriginal(repo)

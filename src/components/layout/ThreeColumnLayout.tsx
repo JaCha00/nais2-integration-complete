@@ -7,6 +7,7 @@ import { PromptPanel } from './PromptPanel'
 import { HistoryPanel } from './HistoryPanel'
 import { AnimatedNavBar } from './AnimatedNavBar'
 import { CustomTitleBar } from './CustomTitleBar'
+import { QueueActivityLink } from './QueueActivityLink'
 import { PresetDropdown } from '@/components/preset/PresetDropdown'
 import { PresetDraftControls } from '@/components/preset/PresetDraftControls'
 import { DiagnosticDrawer } from '@/components/diagnostics/DiagnosticDrawer'
@@ -368,7 +369,9 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                                 <PanelRight className="h-4 w-4" aria-hidden="true" />
                             </button>
                         </Tip>
+                        {/* Queue status stays in the wrapping utility row, so composition routes retain their rail-free canvas width. */}
                         <div className="ml-auto flex basis-full shrink-0 items-center justify-end gap-2 sm:basis-auto">
+                            <QueueActivityLink />
                             <ProductGuidance />
                             <DiagnosticDrawer />
                         </div>

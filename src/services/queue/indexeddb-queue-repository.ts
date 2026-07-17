@@ -5,13 +5,19 @@ import {
     isTerminalJobState,
     QueueStateTransitionError,
 } from '@/domain/queue/state-machine'
+import {
+    applyGenerationJobProjectionDelta,
+    createEmptyGenerationBatchSummary,
+} from '@/domain/queue/summary'
 import { GENERATION_JOB_STATES } from '@/domain/queue/types'
 import type {
     GenerationAttempt,
     GenerationBatch,
+    GenerationBatchProjectionMeta,
     GenerationBatchSummary,
     GenerationJob,
     GenerationJobProjection,
+    GenerationJobProjectionWindow,
     GenerationJobProgress,
     GenerationJobSnapshot,
     GenerationJobState,
@@ -19,6 +25,7 @@ import type {
     QueueArtifactReference,
     QueueBatchOrigin,
     QueueBlockReason,
+    QueueActivitySummary,
     QueueFailureKind,
     QueueFailurePolicy,
     QueuePauseReason,
@@ -31,7 +38,7 @@ import {
 } from './job-snapshot'
 
 export const QUEUE_DATABASE_NAME = 'nais2-durable-generation-queue'
-export const QUEUE_DATABASE_VERSION = 3
+export const QUEUE_DATABASE_VERSION = 4
 
 const STORE_NAMES = ['attempts', 'batches', 'jobs', 'leases', 'resources'] as const
 type QueueStoreName = typeof STORE_NAMES[number]
@@ -89,6 +96,7 @@ interface StoredJobRecord {
     version: number
     globalOrderKey: IDBValidKey
     batchOrderKey: IDBValidKey
+    batchStateOrderKey: IDBValidKey
     stateOrderKey: IDBValidKey
 }
 
@@ -188,6 +196,14 @@ export interface GenerationJobProjectionPage {
     nextCursor: string | null
 }
 
+export interface ListGenerationJobProjectionWindowInput {
+    batchId: string
+    /** Queue Center has one status filter at a time, enabling an indexed window. */
+    state?: GenerationJobState
+    offset: number
+    limit: number
+}
+
 export interface CreateBatchAndEnqueueInput {
     batch: DurableGenerationBatchInput
     jobs: readonly EnqueueGenerationJobInput[]
@@ -239,6 +255,47 @@ function assertBatchOrigin(value: unknown): asserts value is QueueBatchOrigin {
     }
 }
 
+function parseBatchProjectionSummary(value: unknown, batchId: string): GenerationBatchSummary {
+    if (value === undefined) return createEmptyGenerationBatchSummary(batchId)
+    if (!isRecord(value)
+        || value.batchId !== batchId
+        || typeof value.total !== 'number'
+        || !Number.isSafeInteger(value.total)
+        || typeof value.completed !== 'number'
+        || !Number.isSafeInteger(value.completed)
+        || typeof value.progressCurrent !== 'number'
+        || typeof value.progressTotal !== 'number'
+        || !Number.isFinite(value.progressCurrent)
+        || !Number.isFinite(value.progressTotal)
+        || !isRecord(value.states)
+        || !Array.isArray(value.recentCompletedAt)) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch projection summary is invalid')
+    }
+    const states = {} as Record<GenerationJobState, number>
+    for (const state of GENERATION_JOB_STATES) {
+        const count = value.states[state]
+        if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch projection state count is invalid')
+        }
+        states[state] = count
+    }
+    const recentCompletedAt = value.recentCompletedAt
+    if (recentCompletedAt.length > 20 || recentCompletedAt.some(timestamp => (
+        typeof timestamp !== 'string' || !Number.isFinite(Date.parse(timestamp))
+    ))) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch projection completion window is invalid')
+    }
+    return {
+        batchId,
+        total: value.total as number,
+        completed: value.completed as number,
+        progressCurrent: value.progressCurrent as number,
+        progressTotal: value.progressTotal as number,
+        states,
+        recentCompletedAt: [...recentCompletedAt],
+    }
+}
+
 function parseBatch(value: unknown): GenerationBatch {
     if (!isRecord(value)) throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch record is invalid')
     assertIdentifier(value.id, 'batch id')
@@ -262,7 +319,15 @@ function parseBatch(value: unknown): GenerationBatch {
     if (!Number.isSafeInteger(value.version) || (value.version as number) < 1) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch version is invalid')
     }
-    return value as unknown as GenerationBatch
+    const projectionRevision = value.projectionRevision === undefined ? 0 : value.projectionRevision
+    if (!Number.isSafeInteger(projectionRevision) || (projectionRevision as number) < 0) {
+        throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'batch projection revision is invalid')
+    }
+    return {
+        ...value,
+        projectionRevision,
+        projectionSummary: parseBatchProjectionSummary(value.projectionSummary, value.id as string),
+    } as unknown as GenerationBatch
 }
 
 function batchFromInput(input: CreateGenerationBatchInput): GenerationBatch {
@@ -286,6 +351,8 @@ function batchFromInput(input: CreateGenerationBatchInput): GenerationBatch {
         origin,
         idempotencyKey,
         version: 1,
+        projectionRevision: 0,
+        projectionSummary: createEmptyGenerationBatchSummary(input.id),
     }
 }
 
@@ -371,6 +438,7 @@ function orderKeys(input: Pick<StoredJobRecord, 'batchId' | 'state' | 'priority'
     return {
         globalOrderKey: suffix,
         batchOrderKey: [input.batchId, ...suffix],
+        batchStateOrderKey: [input.batchId, input.state, ...suffix],
         stateOrderKey: [input.state, ...suffix],
     }
 }
@@ -427,6 +495,7 @@ function parseStoredJob(value: unknown): StoredJobRecord {
     const expectedOrder = orderKeys(parsed)
     if (canonicalSerialize(parsed.globalOrderKey) !== canonicalSerialize(expectedOrder.globalOrderKey)
         || canonicalSerialize(parsed.batchOrderKey) !== canonicalSerialize(expectedOrder.batchOrderKey)
+        || canonicalSerialize(parsed.batchStateOrderKey) !== canonicalSerialize(expectedOrder.batchStateOrderKey)
         || canonicalSerialize(parsed.stateOrderKey) !== canonicalSerialize(expectedOrder.stateOrderKey)) {
         throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'job ordering index is invalid')
     }
@@ -602,6 +671,7 @@ function ensureCurrentIndexes(transaction: IDBTransaction): void {
     ensureIndex(jobs, 'by-idempotency-key', 'idempotencyKey', { unique: true })
     ensureIndex(jobs, 'by-global-order', 'globalOrderKey')
     ensureIndex(jobs, 'by-batch-order', 'batchOrderKey')
+    ensureIndex(jobs, 'by-batch-state-order', 'batchStateOrderKey')
     ensureIndex(jobs, 'by-state-order', 'stateOrderKey')
     ensureIndex(jobs, 'by-output-transaction', 'outputTransactionId', { unique: true })
     const attempts = transaction.objectStore('attempts')
@@ -631,15 +701,50 @@ function upgradeQueueDatabase(database: IDBDatabase, transaction: IDBTransaction
     }
     ensureCurrentIndexes(transaction)
 
-    if (oldVersion < 3) {
+    if (oldVersion < 4) {
         const jobs = transaction.objectStore('jobs')
         const leases = transaction.objectStore('leases')
+        const summaries = new Map<string, GenerationBatchSummary>()
         const cursorRequest = jobs.openCursor()
         cursorRequest.onsuccess = () => {
             const cursor = cursorRequest.result
-            if (cursor === null) return
+            if (cursor === null) {
+                const batches = transaction.objectStore('batches')
+                const batchCursorRequest = batches.openCursor()
+                batchCursorRequest.onsuccess = () => {
+                    const batchCursor = batchCursorRequest.result
+                    if (batchCursor === null) return
+                    try {
+                        const batch = oldVersion < 3
+                            ? migrateLegacyBatch(batchCursor.value)
+                            : parseBatch(batchCursor.value)
+                        const summary = summaries.get(batch.id) ?? createEmptyGenerationBatchSummary(batch.id)
+                        batchCursor.update({
+                            ...batch,
+                            projectionRevision: summary.total > 0 ? 1 : 0,
+                            projectionSummary: summary,
+                        })
+                        batchCursor.continue()
+                    } catch {
+                        transaction.abort()
+                    }
+                }
+                batchCursorRequest.onerror = () => transaction.abort()
+                return
+            }
             try {
-                const migrated = migrateLegacyJob(cursor.value)
+                const migrated = oldVersion < 3
+                    ? migrateLegacyJob(cursor.value)
+                    : { job: parseStoredJob({
+                        ...(cursor.value as Record<string, unknown>),
+                        ...orderKeys(cursor.value as StoredJobRecord),
+                    }), lease: null }
+                const current = summaries.get(migrated.job.batchId)
+                    ?? createEmptyGenerationBatchSummary(migrated.job.batchId)
+                summaries.set(
+                    migrated.job.batchId,
+                    applyGenerationJobProjectionDelta(current, null, projectStoredJob(migrated.job)),
+                )
                 cursor.update(migrated.job)
                 if (migrated.lease !== null) leases.put(migrated.lease)
                 cursor.continue()
@@ -648,20 +753,6 @@ function upgradeQueueDatabase(database: IDBDatabase, transaction: IDBTransaction
             }
         }
         cursorRequest.onerror = () => transaction.abort()
-
-        const batches = transaction.objectStore('batches')
-        const batchCursorRequest = batches.openCursor()
-        batchCursorRequest.onsuccess = () => {
-            const cursor = batchCursorRequest.result
-            if (cursor === null) return
-            try {
-                cursor.update(migrateLegacyBatch(cursor.value))
-                cursor.continue()
-            } catch {
-                transaction.abort()
-            }
-        }
-        batchCursorRequest.onerror = () => transaction.abort()
     }
 }
 
@@ -1009,6 +1100,9 @@ export class IndexedDBQueueRepository {
                         'Batch identity already represents different work',
                     )
                 }
+                const existingBatch = existingBatchValue === undefined
+                    ? undefined
+                    : parseBatch(existingBatchValue)
 
                 const existingResources = new Map<string, QueueResourceRecord>()
                 for (const resource of resources) {
@@ -1065,7 +1159,6 @@ export class IndexedDBQueueRepository {
                     }
                     result.push(existing)
                 }
-                if (existingBatchValue === undefined) await requestResult(batches.add(batch))
                 for (const resource of resources) {
                     const existing = await requestResult(resourceStore.get(resource.id)) as QueueResourceRecord | undefined
                     if (existing === undefined) {
@@ -1078,6 +1171,16 @@ export class IndexedDBQueueRepository {
                     }
                 }
                 await Promise.all(additions.map(candidate => requestResult(jobs.add(candidate))))
+                if (additions.length > 0) {
+                    const projected = withBatchProjectionAdditions(existingBatch ?? batch, additions)
+                    if (existingBatch === undefined) await requestResult(batches.add(projected))
+                    else await requestResult(batches.put(projected))
+                } else if (existingBatch === undefined) {
+                    // A replay cannot normally create an empty batch because this
+                    // method requires jobs, but preserving this branch keeps the
+                    // immutable batch identity valid if all candidates dedupe.
+                    await requestResult(batches.add(batch))
+                }
                 return result
             },
         )
@@ -1150,6 +1253,20 @@ export class IndexedDBQueueRepository {
                 result.push(existing)
             }
             await Promise.all(additions.map(candidate => requestResult(jobs.add(candidate))))
+            const additionsByBatch = new Map<string, StoredJobRecord[]>()
+            for (const addition of additions) {
+                const grouped = additionsByBatch.get(addition.batchId) ?? []
+                grouped.push(addition)
+                additionsByBatch.set(addition.batchId, grouped)
+            }
+            for (const [batchId, batchAdditions] of additionsByBatch) {
+                const existing = batchById.get(batchId)
+                if (existing === undefined) {
+                    throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+                }
+                const projected = withBatchProjectionAdditions(existing, batchAdditions)
+                await requestResult(batches.put(projected))
+            }
             return result
         })
 
@@ -1189,12 +1306,13 @@ export class IndexedDBQueueRepository {
             throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Lease ttl is invalid')
         }
         const result = await this.runTransaction(['batches', 'jobs', 'leases'], 'readwrite', async transaction => {
+            const batches = transaction.objectStore('batches')
             const jobs = transaction.objectStore('jobs')
             const leases = transaction.objectStore('leases')
             const storedValue = await requestResult(jobs.get(input.jobId))
             if (storedValue === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
             const stored = parseStoredJob(storedValue)
-            const batchValue = await requestResult(transaction.objectStore('batches').get(stored.batchId))
+            const batchValue = await requestResult(batches.get(stored.batchId))
             if (batchValue === undefined) {
                 throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
             }
@@ -1217,6 +1335,7 @@ export class IndexedDBQueueRepository {
             await Promise.all([
                 requestResult(jobs.put(next)),
                 requestResult(leases.add(lease)),
+                requestResult(batches.put(withBatchProjectionDelta(batch, stored, next))),
             ])
             return { next, lease }
         })
@@ -1289,7 +1408,8 @@ export class IndexedDBQueueRepository {
 
     async transitionJob(input: TransitionGenerationJobInput): Promise<GenerationJob> {
         assertTimestamp(input.now, 'transition time')
-        const result = await this.runTransaction(['jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
+        const result = await this.runTransaction(['batches', 'jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
+            const batches = transaction.objectStore('batches')
             const jobs = transaction.objectStore('jobs')
             const leases = transaction.objectStore('leases')
             const attempts = transaction.objectStore('attempts')
@@ -1326,6 +1446,11 @@ export class IndexedDBQueueRepository {
             if (isTerminalJobState(stored.state)) {
                 throw new QueueRepositoryError('E_QUEUE_TERMINAL_IMMUTABLE', 'Terminal queue jobs are immutable')
             }
+            const batchValue = await requestResult(batches.get(stored.batchId))
+            if (batchValue === undefined) {
+                throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+            }
+            const batch = parseBatch(batchValue)
             if (input.expectedVersion !== undefined && stored.version !== input.expectedVersion) {
                 throw new QueueRepositoryError('E_QUEUE_INVALID_TRANSITION', 'Queue job version changed')
             }
@@ -1420,6 +1545,7 @@ export class IndexedDBQueueRepository {
             }
             await requestResult(jobs.put(next))
             if (input.to !== 'running' && lease !== null) await requestResult(leases.delete(stored.id))
+            await requestResult(batches.put(withBatchProjectionDelta(batch, stored, next)))
             return { stored: next, lease: input.to === 'running' ? lease : null, idempotent: false }
         })
         if (result.idempotent) return aggregateJob(result.stored, result.lease)
@@ -1441,7 +1567,8 @@ export class IndexedDBQueueRepository {
     }): Promise<GenerationJob> {
         assertTimestamp(input.now, 'progress time')
         assertProgress(input.progress)
-        const nextVersion = await this.runTransaction(['jobs', 'leases'], 'readwrite', async transaction => {
+        const nextVersion = await this.runTransaction(['batches', 'jobs', 'leases'], 'readwrite', async transaction => {
+            const batches = transaction.objectStore('batches')
             const jobs = transaction.objectStore('jobs')
             const leases = transaction.objectStore('leases')
             const [jobValue, leaseValue] = await Promise.all([
@@ -1450,6 +1577,11 @@ export class IndexedDBQueueRepository {
             ])
             if (jobValue === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
             const stored = parseStoredJob(jobValue)
+            const batchValue = await requestResult(batches.get(stored.batchId))
+            if (batchValue === undefined) {
+                throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+            }
+            const batch = parseBatch(batchValue)
             const lease = parseLease(leaseValue)
             if (isTerminalJobState(stored.state)) {
                 throw new QueueRepositoryError('E_QUEUE_TERMINAL_IMMUTABLE', 'Terminal queue jobs are immutable')
@@ -1474,6 +1606,7 @@ export class IndexedDBQueueRepository {
                     : { lastDiagnosticEventId: input.lastDiagnosticEventId }),
             }
             await requestResult(jobs.put(next))
+            await requestResult(batches.put(withBatchProjectionDelta(batch, stored, next)))
             return next.version
         })
         const readback = await this.getJob(input.jobId)
@@ -1493,7 +1626,8 @@ export class IndexedDBQueueRepository {
     }): Promise<GenerationJob> {
         assertTimestamp(input.now, 'output bind time')
         assertIdentifier(input.outputTransactionId, 'output transaction id')
-        const version = await this.runTransaction(['jobs', 'leases'], 'readwrite', async transaction => {
+        const version = await this.runTransaction(['batches', 'jobs', 'leases'], 'readwrite', async transaction => {
+            const batches = transaction.objectStore('batches')
             const jobs = transaction.objectStore('jobs')
             const [jobValue, leaseValue] = await Promise.all([
                 requestResult(jobs.get(input.jobId)),
@@ -1501,6 +1635,11 @@ export class IndexedDBQueueRepository {
             ])
             if (jobValue === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
             const stored = parseStoredJob(jobValue)
+            const batchValue = await requestResult(batches.get(stored.batchId))
+            if (batchValue === undefined) {
+                throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+            }
+            const batch = parseBatch(batchValue)
             const lease = parseLease(leaseValue)
             if (stored.cancelRequestedAt !== null) {
                 throw new QueueRepositoryError('E_QUEUE_CANCEL_REQUESTED', 'Queue job was cancelled before output bind')
@@ -1535,6 +1674,7 @@ export class IndexedDBQueueRepository {
                 version: stored.version + 1,
             }
             await requestResult(jobs.put(next))
+            await requestResult(batches.put(withBatchProjectionDelta(batch, stored, next)))
             return next.version
         })
         const readback = await this.getJob(input.jobId)
@@ -1553,7 +1693,8 @@ export class IndexedDBQueueRepository {
         artifactReference: QueueArtifactReference
     }): Promise<GenerationJob> {
         assertTimestamp(input.now, 'output recovery time')
-        const version = await this.runTransaction(['jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
+        const version = await this.runTransaction(['batches', 'jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
+            const batches = transaction.objectStore('batches')
             const jobs = transaction.objectStore('jobs')
             const value = await requestResult(jobs.get(input.jobId))
             if (value === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
@@ -1571,6 +1712,11 @@ export class IndexedDBQueueRepository {
             if (isTerminalJobState(stored.state)) {
                 throw new QueueRepositoryError('E_QUEUE_TERMINAL_IMMUTABLE', 'Terminal queue jobs are immutable')
             }
+            const batchValue = await requestResult(batches.get(stored.batchId))
+            if (batchValue === undefined) {
+                throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+            }
+            const batch = parseBatch(batchValue)
             if (stored.cancelRequestedAt !== null) {
                 throw new QueueRepositoryError('E_QUEUE_CANCEL_REQUESTED', 'Queue job was cancelled before recovery')
             }
@@ -1601,6 +1747,7 @@ export class IndexedDBQueueRepository {
             await Promise.all([
                 requestResult(jobs.put(next)),
                 requestResult(transaction.objectStore('leases').delete(stored.id)),
+                requestResult(batches.put(withBatchProjectionDelta(batch, stored, next))),
             ])
             return next.version
         })
@@ -1629,7 +1776,8 @@ export class IndexedDBQueueRepository {
         reason?: 'user' | 'batch' | 'shutdown'
     }): Promise<GenerationJob> {
         assertTimestamp(input.now, 'cancel request time')
-        const result = await this.runTransaction(['jobs', 'leases'], 'readwrite', async transaction => {
+        const result = await this.runTransaction(['batches', 'jobs', 'leases'], 'readwrite', async transaction => {
+            const batches = transaction.objectStore('batches')
             const jobs = transaction.objectStore('jobs')
             const leases = transaction.objectStore('leases')
             const value = await requestResult(jobs.get(input.jobId))
@@ -1637,6 +1785,11 @@ export class IndexedDBQueueRepository {
             const stored = parseStoredJob(value)
             if (isTerminalJobState(stored.state)) return stored
             if (stored.cancelRequestedAt !== null) return stored
+            const batchValue = await requestResult(batches.get(stored.batchId))
+            if (batchValue === undefined) {
+                throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+            }
+            const batch = parseBatch(batchValue)
             const reason = input.reason ?? 'user'
             if (stored.state === 'running') {
                 const next: StoredJobRecord = {
@@ -1647,6 +1800,7 @@ export class IndexedDBQueueRepository {
                     version: stored.version + 1,
                 }
                 await requestResult(jobs.put(next))
+                await requestResult(batches.put(withBatchProjectionDelta(batch, stored, next)))
                 return next
             }
             const next = {
@@ -1656,6 +1810,7 @@ export class IndexedDBQueueRepository {
             }
             if (stored.state === 'leased') await requestResult(leases.delete(stored.id))
             await requestResult(jobs.put(next))
+            await requestResult(batches.put(withBatchProjectionDelta(batch, stored, next)))
             return next
         })
         const readback = await this.getJob(input.jobId)
@@ -1713,7 +1868,8 @@ export class IndexedDBQueueRepository {
     }): Promise<GenerationJob> {
         assertTimestamp(input.now, 'retry transition time')
         assertTimestamp(input.readyAt, 'retry readyAt')
-        const version = await this.runTransaction(['jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
+        const version = await this.runTransaction(['batches', 'jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
+            const batches = transaction.objectStore('batches')
             const jobs = transaction.objectStore('jobs')
             const leases = transaction.objectStore('leases')
             const attempts = transaction.objectStore('attempts')
@@ -1723,6 +1879,11 @@ export class IndexedDBQueueRepository {
             ])
             if (jobValue === undefined) throw new QueueRepositoryError('E_QUEUE_NOT_FOUND', 'Queue job does not exist')
             const stored = parseStoredJob(jobValue)
+            const batchValue = await requestResult(batches.get(stored.batchId))
+            if (batchValue === undefined) {
+                throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+            }
+            const batch = parseBatch(batchValue)
             const lease = parseLease(leaseValue)
             if (stored.cancelRequestedAt !== null) {
                 throw new QueueRepositoryError('E_QUEUE_CANCEL_REQUESTED', 'Queue job was cancelled before retry')
@@ -1757,6 +1918,7 @@ export class IndexedDBQueueRepository {
             await Promise.all([
                 requestResult(jobs.put(next)),
                 requestResult(leases.delete(stored.id)),
+                requestResult(batches.put(withBatchProjectionDelta(batch, stored, next))),
             ])
             return next.version
         })
@@ -1811,7 +1973,8 @@ export class IndexedDBQueueRepository {
         options: { includeUnexpired?: boolean } = {},
     ): Promise<string[]> {
         assertTimestamp(now, 'recovery time')
-        const recoveredIds = await this.runTransaction(['jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
+        const recoveredIds = await this.runTransaction(['batches', 'jobs', 'leases', 'attempts'], 'readwrite', async transaction => {
+            const batches = transaction.objectStore('batches')
             const jobs = transaction.objectStore('jobs')
             const leases = transaction.objectStore('leases')
             const attempts = transaction.objectStore('attempts')
@@ -1844,9 +2007,15 @@ export class IndexedDBQueueRepository {
                         outcome: 'interrupted',
                     }))
                 }
+                const batchValue = await requestResult(batches.get(stored.batchId))
+                if (batchValue === undefined) {
+                    throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+                }
+                const batch = parseBatch(batchValue)
                 await Promise.all([
                     requestResult(jobs.put(next)),
                     requestResult(leases.delete(stored.id)),
+                    requestResult(batches.put(withBatchProjectionDelta(batch, stored, next))),
                 ])
                 ids.push(stored.id)
             }
@@ -1981,48 +2150,180 @@ export class IndexedDBQueueRepository {
         }
     }
 
-    async getBatchSummary(batchId: string): Promise<GenerationBatchSummary> {
-        if (await this.getBatch(batchId) === null) {
+    async getBatchProjectionMeta(batchId: string): Promise<GenerationBatchProjectionMeta> {
+        assertIdentifier(batchId, 'batch id')
+        const batch = await this.getBatch(batchId)
+        if (batch === null) {
             throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
         }
-        const states = Object.fromEntries(GENERATION_JOB_STATES.map(state => [state, 0])) as Record<
-            GenerationJobState,
-            number
-        >
-        let total = 0
-        let completed = 0
-        let progressCurrent = 0
-        let progressTotal = 0
-        const recentCompletedAt: string[] = []
-        let cursor: string | null = null
-        do {
-            const page = await this.listJobProjections({ batchId, cursor, limit: 1_000 })
-            for (const job of page.items) {
-                total += 1
-                states[job.state] += 1
-                progressTotal += 1
-                progressCurrent += isTerminalJobState(job.state)
-                    ? 1
-                    : job.progress.total <= 0
-                        ? 0
-                        : Math.min(1, job.progress.current / job.progress.total)
-                if (isTerminalJobState(job.state)) {
-                    completed += 1
-                    recentCompletedAt.push(job.updatedAt)
-                }
-            }
-            cursor = page.nextCursor
-        } while (cursor !== null)
-        recentCompletedAt.sort((left, right) => right.localeCompare(left))
         return {
             batchId,
-            total,
-            completed,
-            progressCurrent,
-            progressTotal,
-            states,
-            recentCompletedAt: recentCompletedAt.slice(0, 20),
+            revision: batch.projectionRevision,
+            summary: structuredClone(batch.projectionSummary),
         }
+    }
+
+    /**
+     * Reads only the rows surrounding Queue Center's virtual range. The batch
+     * aggregate and jobs share one readonly transaction, so a returned revision
+     * always describes the same durable projection as its items and total.
+     */
+    async listJobProjectionWindow(
+        input: ListGenerationJobProjectionWindowInput,
+    ): Promise<GenerationJobProjectionWindow> {
+        assertIdentifier(input.batchId, 'batch id')
+        if (input.state !== undefined && !isGenerationJobState(input.state)) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Queue projection state is invalid')
+        }
+        if (!Number.isSafeInteger(input.offset) || input.offset < 0) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Queue projection offset is invalid')
+        }
+        if (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 1_000) {
+            throw new QueueRepositoryError('E_QUEUE_RECORD_INVALID', 'Queue projection window limit is invalid')
+        }
+
+        return this.runTransaction(['batches', 'jobs'], 'readonly', async transaction => {
+            const batchValue = await requestResult(transaction.objectStore('batches').get(input.batchId))
+            if (batchValue === undefined) {
+                throw new QueueRepositoryError('E_QUEUE_BATCH_NOT_FOUND', 'Queue batch does not exist')
+            }
+            const batch = parseBatch(batchValue)
+            const state = input.state ?? null
+            const total = state === null
+                ? batch.projectionSummary.total
+                : batch.projectionSummary.states[state]
+            const jobs = transaction.objectStore('jobs')
+            const index = state === null
+                ? jobs.index('by-batch-order')
+                : jobs.index('by-batch-state-order')
+            const range = state === null
+                ? this.keyRange.bound([input.batchId], [input.batchId, []])
+                : this.keyRange.bound([input.batchId, state], [input.batchId, state, []])
+            const items = await new Promise<GenerationJobProjection[]>((resolve, reject) => {
+                const selected: GenerationJobProjection[] = []
+                let advanced = false
+                const request = index.openCursor(range)
+                request.onerror = () => reject(request.error ?? new Error('Queue projection cursor failed'))
+                request.onsuccess = () => {
+                    const cursor = request.result
+                    if (cursor === null || selected.length >= input.limit) {
+                        resolve(selected)
+                        return
+                    }
+                    if (!advanced && input.offset > 0) {
+                        advanced = true
+                        cursor.advance(input.offset)
+                        return
+                    }
+                    advanced = true
+                    selected.push(projectStoredJob(parseStoredJob(cursor.value)))
+                    cursor.continue()
+                }
+            })
+            return {
+                batchId: input.batchId,
+                revision: batch.projectionRevision,
+                summary: structuredClone(batch.projectionSummary),
+                state,
+                offset: input.offset,
+                total,
+                items,
+            }
+        })
+    }
+
+    async getBatchSummary(batchId: string): Promise<GenerationBatchSummary> {
+        return (await this.getBatchProjectionMeta(batchId)).summary
+    }
+
+    async getActivitySummary(): Promise<QueueActivitySummary> {
+        return this.runTransaction(['jobs'], 'readonly', async transaction => {
+            const stateOrder = transaction.objectStore('jobs').index('by-state-order')
+            const countState = (state: GenerationJobState) => (
+                requestResult(stateOrder.count(this.keyRange.bound([state], [state, []])))
+            )
+            // The app shell and Queue Center have different read budgets: this shared
+            // indicator counts indexed states only, while Queue Center owns detailed
+            // job projections, progress, and retry controls.
+            const [queued, leased, running, recovering, failed, blocked] = await Promise.all([
+                countState('queued'),
+                countState('leased'),
+                countState('running'),
+                countState('recovering'),
+                countState('failed'),
+                countState('blocked'),
+            ])
+            return {
+                processing: leased + running + recovering,
+                waiting: queued,
+                needsAttention: failed + blocked,
+            }
+        })
+    }
+}
+
+/**
+ * Queue Center never needs snapshots or leases. This shared projection keeps
+ * pagination and the new viewport query aligned while avoiding those payloads.
+ */
+function projectStoredJob(stored: StoredJobRecord): GenerationJobProjection {
+    return {
+        id: stored.id,
+        batchId: stored.batchId,
+        workflow: stored.workflow,
+        sceneId: stored.sceneId,
+        state: stored.state,
+        createdAt: stored.createdAt,
+        updatedAt: stored.updatedAt,
+        priority: stored.priority,
+        ordinal: stored.ordinal,
+        attemptCount: stored.attemptCount,
+        maxAttempts: stored.maxAttempts,
+        progress: { ...stored.progress },
+        readyAt: stored.readyAt,
+        cancelRequestedAt: stored.cancelRequestedAt,
+        retryOfJobId: stored.retryOfJobId,
+        lastDiagnosticEventId: stored.lastDiagnosticEventId,
+        outputTransactionId: stored.outputTransactionId,
+        version: stored.version,
+    }
+}
+
+function withBatchProjectionDelta(
+    batch: GenerationBatch,
+    previous: StoredJobRecord | null,
+    next: StoredJobRecord | null,
+): GenerationBatch {
+    return {
+        ...batch,
+        projectionRevision: batch.projectionRevision + 1,
+        projectionSummary: applyGenerationJobProjectionDelta(
+            batch.projectionSummary,
+            previous === null ? null : projectStoredJob(previous),
+            next === null ? null : projectStoredJob(next),
+        ),
+    }
+}
+
+function withBatchProjectionAdditions(
+    batch: GenerationBatch,
+    additions: readonly StoredJobRecord[],
+): GenerationBatch {
+    if (additions.length === 0) return batch
+    const projectionSummary = additions.reduce(
+        (summary, candidate) => applyGenerationJobProjectionDelta(
+            summary,
+            null,
+            projectStoredJob(candidate),
+        ),
+        batch.projectionSummary,
+    )
+    return {
+        ...batch,
+        // A bulk enqueue is one atomic projection change. Consumers only need
+        // to know that their viewport is stale, not how many rows were added.
+        projectionRevision: batch.projectionRevision + 1,
+        projectionSummary,
     }
 }
 

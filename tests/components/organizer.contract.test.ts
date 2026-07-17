@@ -21,15 +21,15 @@ describe('Organizer user-flow contract', () => {
             'onDragStart',
             'onDrop',
             'onPointerUp',
-            'Duplicate assignment is blocked',
-            'Thumbnail grid size',
+            "t('organizer.duplicateAssignmentBlocked'",
+            "t('organizer.thumbnailGridSizeAria'",
             "t('organizer.filenamePreview'",
             "t('organizer.conflictPreview'",
-            'R2 key preview',
-            'Copy / rename',
-            'Organizer execution progress',
+            "t('organizer.r2KeyPreview'",
+            "t('organizer.copyRenameStripMetadata'",
+            "t('organizer.executionProgressAria'",
             "t('organizer.diagnostics'",
-            'Optional R2 follow-up',
+            "t('organizer.optionalR2FollowUp'",
             'retryFailed',
             "t('organizer.description'",
             'consumeOrganizerHandoff',
@@ -55,6 +55,22 @@ describe('Organizer user-flow contract', () => {
         expect(coordinator).toContain('stripImageMetadata')
         expect(coordinator).toContain('enqueueR2FollowUp')
         expect(page).not.toContain('.writeFile(')
+        expect(page).toContain('const bytes = await collectionAdapter.readEntry(entry)')
+        expect(page).toContain('existing === null || existing.contentChecksum === contentChecksum')
+        expect(page).toContain('`${JSON.stringify(entry.file)}\\n${contentChecksum}`')
         expect(`${types}\n${repository}\n${coordinator}`).not.toMatch(/\b(?:Electron|Sharp|better-sqlite3)\b/i)
+    })
+
+    it('reuses an Artifact handoff only after its portable file and checksum still match', async () => {
+        const page = await source('src/pages/Organizer.tsx')
+
+        expect(page).toContain('const record = await artifactRepository.get(handoff.artifactId)')
+        expect(page).toContain('refreshCollection(collectionForArtifact(record))')
+        expect(page).toContain('samePortableFile(entry.file, record.original.file)')
+        expect(page).toContain('linked.contentChecksum === contentChecksum')
+        expect(page).toContain('samePortableFile(entry.file, linked.original.file)')
+        expect(page).toContain('const refreshCollection = useCallback(async (nextCollection = collectionRef.current)')
+        expect(page).toContain('collectionRef.current = nextCollection')
+        expect(page).toContain('}, [collectionAdapter, loadRecords])')
     })
 })

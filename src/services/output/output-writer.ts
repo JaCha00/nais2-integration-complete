@@ -1,5 +1,7 @@
 import type { MetadataWriteRequest, OutputMetadataWriter } from './metadata-writer'
 import { MetadataWriter } from './metadata-writer'
+import type { PortablePathRef, PortablePathRoot } from '@/domain/composition/types'
+import { getPortableStorageRoot } from '@/platform/storage'
 import {
     ensureImageFileExtension,
     resolveCollisionFileName,
@@ -48,6 +50,17 @@ export interface OutputWriterDestination extends OutputDestinationRequest {
     collisionPolicy?: OutputCollisionPolicy
 }
 
+/**
+ * Durable facts for the prepared image that Queue can turn into an ArtifactRecord.
+ * The directory is projected to the portable composition contract, so neither a
+ * display path nor an adapter-specific absolute path can cross this boundary.
+ */
+export interface OutputFinalImageFacts {
+    contentChecksum: string
+    byteSize: number
+    portableDirectory?: PortablePathRef
+}
+
 export interface OutputWriteResult {
     transactionId: string
     fileName: string
@@ -59,6 +72,8 @@ export interface OutputWriteResult {
     artifactSidecarPath?: string
     /** SHA-256 of the exact final image bytes, after any metadata preparation. */
     contentChecksum?: string
+    /** Opt-in durable facts for Queue/ArtifactRecord linkage and retry recovery. */
+    finalImage?: OutputFinalImageFacts
     thumbnailDataUrl?: string
     capabilityFallbackUsed: boolean
     capabilityFallbackReason?: string
@@ -80,6 +95,11 @@ export interface OutputWriterRequest {
      * cannot bypass OutputWriter with a direct file write.
      */
     artifactSidecarBytes?: Uint8Array
+    /**
+     * Queue opts in when it needs an ArtifactRecord-ready final image reference.
+     * Existing output callers avoid the extra digest and keep their result shape.
+     */
+    includeFinalImageFacts?: boolean
     generateThumbnail?: (imageDataUrl: string) => Promise<string>
     canCommit: () => boolean
     commitWorkflow: (result: OutputWriteResult) => void | Promise<void>
@@ -114,6 +134,7 @@ interface OutputRecoveryJournal {
     phase: RecoveryJournalPhase
     fileName: string
     contentChecksum?: string
+    finalImage?: OutputFinalImageFacts
     directory: ResolvedOutputDirectory
     artifacts: JournalArtifact[]
     thumbnailStaged: boolean
@@ -185,6 +206,103 @@ function backupName(fileName: string, transactionId: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+const CHECKSUM_PATTERN = /^sha256:[a-f0-9]{64}$/i
+const PORTABLE_ROOTS: readonly PortablePathRoot[] = [
+    'app-data', 'documents', 'pictures', 'downloads', 'media', 'cache',
+]
+const PORTABLE_BOOKMARK_PATTERN = /^[A-Za-z0-9:_-]{1,256}$/
+
+function isSafePortableSegment(value: unknown): value is string {
+    return typeof value === 'string'
+        && value.length > 0
+        && value.length <= 255
+        && value !== '.'
+        && value !== '..'
+        && !/[\\/\0]/.test(value)
+}
+
+/**
+ * Output adapters materialize paths for I/O, while queue recovery persists only
+ * composition portable references. Projecting here keeps the journal/result
+ * usable by ArtifactRecord without retaining display paths, extension payloads,
+ * or platform-specific tokens that the adapter already owns.
+ */
+function projectPortableDirectory(value: unknown): PortablePathRef {
+    if (!isRecord(value) || !Array.isArray(value.segments)
+        || value.segments.length > 256
+        || !value.segments.every(isSafePortableSegment)) {
+        throw new Error('Invalid portable output directory')
+    }
+    const segments = [...value.segments]
+    if (value.kind === 'standard') {
+        if (typeof value.root !== 'string' || !PORTABLE_ROOTS.includes(value.root as PortablePathRoot)) {
+            throw new Error('Invalid standard output directory root')
+        }
+        return {
+            kind: 'standard',
+            root: value.root as PortablePathRoot,
+            segments,
+        }
+    }
+    if (value.kind === 'bookmark') {
+        if (typeof value.bookmarkId !== 'string' || !PORTABLE_BOOKMARK_PATTERN.test(value.bookmarkId)) {
+            throw new Error('Invalid bookmarked output directory')
+        }
+        return {
+            kind: 'bookmark',
+            bookmarkId: value.bookmarkId,
+            segments,
+        }
+    }
+    throw new Error('Invalid portable output directory kind')
+}
+
+function isAbsoluteOutputPath(value: string): boolean {
+    return /^[A-Za-z]:[\\/]/.test(value) || /^[\\/]{1,2}/.test(value)
+}
+
+function projectDirectoryPath(path: string): string[] {
+    if (isAbsoluteOutputPath(path)) throw new Error('Absolute output directories are not portable')
+    const segments = path === '.' ? [] : path.split(/[\\/]+/)
+    if (!segments.every(isSafePortableSegment)) throw new Error('Output directory contains unsafe path segments')
+    return segments
+}
+
+function portableDirectoryForFinalImage(
+    destination: OutputWriterDestination,
+    directory: ResolvedOutputDirectory,
+): PortablePathRef | undefined {
+    if (destination.portableDirectory !== undefined) return projectPortableDirectory(destination.portableDirectory)
+    if (isAbsoluteOutputPath(directory.path)) return undefined
+    const root = getPortableStorageRoot(directory.baseDir)
+    if (root === undefined) {
+        throw new Error('Final image facts require a portable destination or a known standard output root')
+    }
+    return {
+        kind: 'standard',
+        root,
+        segments: projectDirectoryPath(directory.path),
+    }
+}
+
+function parseFinalImageFacts(value: unknown): OutputFinalImageFacts {
+    if (!isRecord(value)
+        || typeof value.contentChecksum !== 'string'
+        || !CHECKSUM_PATTERN.test(value.contentChecksum)
+        || typeof value.byteSize !== 'number'
+        || !Number.isSafeInteger(value.byteSize)
+        || value.byteSize < 0) {
+        throw new Error('Invalid output recovery final image facts')
+    }
+    return {
+        contentChecksum: value.contentChecksum,
+        byteSize: value.byteSize,
+        ...(value.portableDirectory === undefined
+            ? {}
+            : { portableDirectory: projectPortableDirectory(value.portableDirectory) }),
+    }
 }
 
 function parseFileRef(value: unknown): OutputFileRef {
@@ -261,6 +379,7 @@ function parseJournal(bytes: Uint8Array): OutputRecoveryJournal {
         ...(typeof value.contentChecksum === 'string' && /^sha256:[a-f0-9]{64}$/i.test(value.contentChecksum)
             ? { contentChecksum: value.contentChecksum }
             : {}),
+        ...(value.finalImage === undefined ? {} : { finalImage: parseFinalImageFacts(value.finalImage) }),
         directory,
         artifacts,
         thumbnailStaged: value.thumbnailStaged === true,
@@ -284,6 +403,7 @@ function resultFromJournal(journal: OutputRecoveryJournal): OutputWriteResult {
         ...(diagnostic === undefined ? {} : { diagnosticSidecarPath: diagnostic.final.displayPath }),
         ...(artifactSidecar === undefined ? {} : { artifactSidecarPath: artifactSidecar.final.displayPath }),
         ...(journal.contentChecksum === undefined ? {} : { contentChecksum: journal.contentChecksum }),
+        ...(journal.finalImage === undefined ? {} : { finalImage: journal.finalImage }),
         capabilityFallbackUsed: journal.directory.capabilityFallbackUsed,
         ...(journal.directory.fallbackReason === undefined
             ? {}
@@ -409,11 +529,29 @@ export class OutputWriter {
             }
             const prepared = this.metadataWriter.prepare(request.imageBytes, request.metadata)
             // Keep the established generation/output scheduling unchanged.
-            // Organizer already opts into a separate artifact sidecar, so only
-            // that new path pays the asynchronous byte-digest cost.
+            // Organizer sidecars and Queue's ArtifactRecord recovery facts are
+            // explicit callers, so ordinary output writes do not pay a digest.
+            const includeFinalImageFacts = request.includeFinalImageFacts === true
             const contentChecksum = request.artifactSidecarBytes === undefined
                 ? undefined
                 : await sha256Bytes(prepared.imageBytes)
+            const finalImageChecksum = includeFinalImageFacts
+                ? contentChecksum ?? await sha256Bytes(prepared.imageBytes)
+                : undefined
+            const finalImagePortableDirectory = finalImageChecksum === undefined
+                ? undefined
+                : portableDirectoryForFinalImage(request.destination, directory)
+            const finalImage = finalImageChecksum === undefined
+                ? undefined
+                : {
+                    contentChecksum: finalImageChecksum,
+                    byteSize: prepared.imageBytes.byteLength,
+                    ...(finalImagePortableDirectory === undefined
+                        ? {}
+                        : {
+                            portableDirectory: finalImagePortableDirectory,
+                        }),
+                } satisfies OutputFinalImageFacts
             const imageFinal = childOutputRef(directory, fileName)
             const artifacts: JournalArtifact[] = [{
                 kind: 'image',
@@ -461,6 +599,7 @@ export class OutputWriter {
                 phase: 'staged',
                 fileName,
                 ...(contentChecksum === undefined ? {} : { contentChecksum }),
+                ...(finalImage === undefined ? {} : { finalImage }),
                 directory: {
                     ...serializeOutputFileRef(directory),
                     capabilityFallbackUsed: directory.capabilityFallbackUsed,
@@ -563,6 +702,7 @@ export class OutputWriter {
                     ? {}
                     : { artifactSidecarPath: artifactSidecarArtifact.final.displayPath }),
                 ...(contentChecksum === undefined ? {} : { contentChecksum }),
+                ...(finalImage === undefined ? {} : { finalImage }),
                 ...(thumbnailDataUrl === undefined ? {} : { thumbnailDataUrl }),
                 capabilityFallbackUsed: directory.capabilityFallbackUsed,
                 ...(directory.fallbackReason === undefined

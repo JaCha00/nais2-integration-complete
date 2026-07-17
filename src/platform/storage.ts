@@ -1,7 +1,7 @@
 import { appDataDir, join, pictureDir } from '@tauri-apps/api/path'
 import { BaseDirectory } from '@tauri-apps/plugin-fs'
 import { isMobileRuntime } from './runtime'
-import type { PortablePathRef } from '@/domain/composition/types'
+import type { PortablePathRef, PortablePathRoot } from '@/domain/composition/types'
 
 // All persisted media paths flow through this adapter so capability scopes and
 // path resolution cannot disagree between the desktop and mobile runtimes.
@@ -32,5 +32,24 @@ export function getPortableStorageBaseDirectory(
         case 'downloads': return BaseDirectory.Download
         case 'media': return BaseDirectory.Video
         case 'cache': return BaseDirectory.Cache
+    }
+}
+
+/**
+ * OutputWriter projects completed media into portable ArtifactRecord facts, so it
+ * must use the inverse of the read adapter's root-to-directory mapping here.
+ * Keeping both directions in this platform boundary prevents desktop Picture
+ * and Android app-data scopes from drifting when output recovery is replayed.
+ */
+export function getPortableStorageRoot(baseDir: BaseDirectory | undefined): PortablePathRoot | undefined {
+    if (baseDir === undefined) return undefined
+    switch (baseDir) {
+        case BaseDirectory.AppData: return 'app-data'
+        case BaseDirectory.Document: return 'documents'
+        case BaseDirectory.Picture: return 'pictures'
+        case BaseDirectory.Download: return 'downloads'
+        case BaseDirectory.Video: return 'media'
+        case BaseDirectory.Cache: return 'cache'
+        default: return undefined
     }
 }
