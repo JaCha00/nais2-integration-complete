@@ -124,6 +124,18 @@ export interface GenerationBatch {
     readonly origin: QueueBatchOrigin
     readonly idempotencyKey: string
     readonly version: number
+    /**
+     * Durable read-model revision for Queue Center. Job writers advance this
+     * independently of batch controls so a viewport can poll one small record
+     * and reload rows only after a projection-visible mutation.
+     */
+    readonly projectionRevision: number
+    /**
+     * Transactional aggregate paired with projectionRevision. It connects job
+     * state/progress writes to Queue Center totals without loading snapshots or
+     * every job projection on each visible-tab refresh.
+     */
+    readonly projectionSummary: GenerationBatchSummary
 }
 
 export type QueueResourceAvailability = 'available' | 'missing' | 'volatile'
@@ -180,4 +192,30 @@ export interface GenerationBatchSummary {
     readonly progressTotal: number
     readonly states: Readonly<Record<GenerationJobState, number>>
     readonly recentCompletedAt: readonly string[]
+}
+
+/** Small batch read used to decide whether a Queue Center viewport is stale. */
+export interface GenerationBatchProjectionMeta {
+    readonly batchId: string
+    readonly revision: number
+    readonly summary: GenerationBatchSummary
+}
+
+/** Bounded Queue Center row slice. `total` is scoped to `state` when supplied. */
+export interface GenerationJobProjectionWindow extends GenerationBatchProjectionMeta {
+    readonly state: GenerationJobState | null
+    readonly offset: number
+    readonly total: number
+    readonly items: readonly GenerationJobProjection[]
+}
+
+/**
+ * Small cross-batch read model for the persistent app-shell Queue entry point.
+ * The IndexedDB repository derives these values from state indexes so navigation
+ * can signal work without materializing Queue Center job projections or snapshots.
+ */
+export interface QueueActivitySummary {
+    readonly processing: number
+    readonly waiting: number
+    readonly needsAttention: number
 }

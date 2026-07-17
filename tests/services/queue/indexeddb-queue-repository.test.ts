@@ -1,5 +1,5 @@
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { GenerationJobSnapshot } from '@/domain/queue/types'
 import {
@@ -87,6 +87,87 @@ async function createV1Database(
     })
 }
 
+async function createV3Database(factory: IDBFactory, name: string): Promise<void> {
+    const fixedSnapshot = snapshot()
+    await new Promise<void>((resolve, reject) => {
+        const request = factory.open(name, 3)
+        request.onupgradeneeded = () => {
+            const database = request.result
+            const batches = database.createObjectStore('batches', { keyPath: 'id' })
+            batches.createIndex('by-created-at', 'createdAt')
+            batches.createIndex('by-idempotency-key', 'idempotencyKey', { unique: true })
+            const jobs = database.createObjectStore('jobs', { keyPath: 'id' })
+            jobs.createIndex('by-idempotency-key', 'idempotencyKey', { unique: true })
+            jobs.createIndex('by-global-order', 'globalOrderKey')
+            jobs.createIndex('by-batch-order', 'batchOrderKey')
+            jobs.createIndex('by-state-order', 'stateOrderKey')
+            jobs.createIndex('by-output-transaction', 'outputTransactionId', { unique: true })
+            const attempts = database.createObjectStore('attempts', { keyPath: 'id' })
+            attempts.createIndex('by-job-attempt', 'jobAttemptKey', { unique: true })
+            const leases = database.createObjectStore('leases', { keyPath: 'jobId' })
+            leases.createIndex('by-expires-at', 'expiresAt')
+            const resources = database.createObjectStore('resources', { keyPath: 'id' })
+            resources.createIndex('by-digest', 'digest')
+        }
+        request.onerror = () => reject(request.error)
+        request.onsuccess = () => {
+            const database = request.result
+            const transaction = database.transaction(['batches', 'jobs'], 'readwrite')
+            transaction.objectStore('batches').put({
+                id: 'batch:1',
+                workflow: 'main',
+                createdAt: NOW,
+                updatedAt: NOW,
+                state: 'active',
+                failurePolicy: 'continue',
+                pauseReason: null,
+                origin: 'fresh',
+                idempotencyKey: 'batch:1',
+                version: 1,
+            })
+            transaction.objectStore('jobs').put({
+                recordSchemaVersion: 3,
+                id: 'job:1',
+                batchId: 'batch:1',
+                workflow: 'main',
+                sceneId: null,
+                state: 'queued',
+                createdAt: NOW,
+                updatedAt: NOW,
+                priority: 0,
+                ordinal: 0,
+                snapshotSchemaVersion: fixedSnapshot.schemaVersion,
+                snapshot: fixedSnapshot,
+                snapshotHash: hashGenerationJobSnapshot(fixedSnapshot),
+                compositionPlanHash: null,
+                attemptCount: 0,
+                maxAttempts: 3,
+                idempotencyKey: 'idempotency:1',
+                progress: { stage: 'queued', current: 0, total: 0 },
+                lastDiagnosticEventId: null,
+                outputTransactionId: null,
+                artifactReference: null,
+                blockReason: null,
+                readyAt: NOW,
+                cancelRequestedAt: null,
+                cancelReason: null,
+                retryOfJobId: null,
+                rootJobId: 'job:1',
+                version: 1,
+                globalOrderKey: [0, 0, NOW, 'job:1'],
+                batchOrderKey: ['batch:1', 0, 0, NOW, 'job:1'],
+                stateOrderKey: ['queued', 0, 0, NOW, 'job:1'],
+            })
+            transaction.oncomplete = () => {
+                database.close()
+                resolve()
+            }
+            transaction.onerror = () => reject(transaction.error)
+            transaction.onabort = () => reject(transaction.error ?? new Error('v3 fixture aborted'))
+        }
+    })
+}
+
 async function readRawJob(factory: IDBFactory, name: string, version: number): Promise<unknown> {
     return new Promise((resolve, reject) => {
         const request = factory.open(name, version)
@@ -114,10 +195,11 @@ describe('normalized IndexedDB durable queue repository', () => {
         await queue.initialize()
 
         const schema = await queue.inspectSchema()
-        expect(schema.version).toBe(3)
+        expect(schema.version).toBe(4)
         expect(schema.stores).toEqual(['attempts', 'batches', 'jobs', 'leases', 'resources'])
         expect(schema.indexes.jobs).toEqual([
             'by-batch-order',
+            'by-batch-state-order',
             'by-global-order',
             'by-idempotency-key',
             'by-output-transaction',
@@ -273,6 +355,104 @@ describe('normalized IndexedDB durable queue repository', () => {
         expect(ids).toEqual(expected)
         expect(new Set(ids).size).toBe(10_000)
     }, 30_000)
+
+    it('backfills v3 batch aggregates and reads bounded indexed projection windows', async () => {
+        const factory = new IDBFactory()
+        const name = databaseName('projection-upgrade')
+        await createV3Database(factory, name)
+        const queue = repository(factory, name)
+        await queue.initialize()
+
+        const projectionReads = vi.spyOn(queue, 'listJobProjections')
+        await expect(queue.getBatchSummary('batch:1')).resolves.toMatchObject({
+            total: 1,
+            states: { queued: 1 },
+        })
+        expect(projectionReads).not.toHaveBeenCalled()
+
+        const firstWindow = await queue.listJobProjectionWindow({
+            batchId: 'batch:1',
+            offset: 0,
+            limit: 1,
+        })
+        expect(firstWindow).toMatchObject({
+            revision: 1,
+            total: 1,
+            state: null,
+            items: [expect.objectContaining({ id: 'job:1', state: 'queued' })],
+        })
+        expect(firstWindow.items[0]).not.toHaveProperty('snapshot')
+        expect((await queue.inspectSchema()).indexes.jobs).toContain('by-batch-state-order')
+    })
+
+    it('advances the durable summary revision for queue-visible mutations and windows', async () => {
+        const factory = new IDBFactory()
+        const queue = repository(factory, databaseName('projection-delta'))
+        await queue.createBatch({ id: 'batch:1', workflow: 'main', createdAt: NOW })
+        await queue.enqueueMany(Array.from({ length: 8 }, (_, index) => jobInput({
+            id: `job:${index}`,
+            ordinal: index,
+            idempotencyKey: `idempotency:${index}`,
+        })))
+
+        const initial = await queue.getBatchProjectionMeta('batch:1')
+        expect(initial).toMatchObject({ revision: 1, summary: { total: 8, states: { queued: 8 } } })
+        const middle = await queue.listJobProjectionWindow({ batchId: 'batch:1', offset: 3, limit: 2 })
+        expect(middle.items.map(job => job.id)).toEqual(['job:3', 'job:4'])
+
+        const lease = await queue.acquireLease({ jobId: 'job:3', owner: 'worker:projection', now: NOW, ttlMs: 60_000 })
+        const leased = await queue.getBatchProjectionMeta('batch:1')
+        expect(leased).toMatchObject({ revision: 2, summary: { states: { queued: 7, leased: 1 } } })
+        await queue.transitionJob({
+            jobId: 'job:3',
+            to: 'running',
+            now: NOW,
+            leaseOwner: 'worker:projection',
+            leaseToken: lease?.leaseToken ?? '',
+        })
+        await queue.updateProgress({
+            jobId: 'job:3',
+            leaseOwner: 'worker:projection',
+            leaseToken: lease?.leaseToken ?? '',
+            now: NOW,
+            progress: { stage: 'sampling', current: 1, total: 4 },
+        })
+        const running = await queue.getBatchProjectionMeta('batch:1')
+        expect(running).toMatchObject({
+            revision: 4,
+            summary: { states: { queued: 7, running: 1 }, progressCurrent: 0.25, progressTotal: 8 },
+        })
+        const runningWindow = await queue.listJobProjectionWindow({
+            batchId: 'batch:1', state: 'running', offset: 0, limit: 4,
+        })
+        expect(runningWindow).toMatchObject({ total: 1, items: [expect.objectContaining({ id: 'job:3' })] })
+
+        await queue.bindOutputTransaction({
+            jobId: 'job:3',
+            leaseOwner: 'worker:projection',
+            leaseToken: lease?.leaseToken ?? '',
+            now: LATER,
+            outputTransactionId: 'output:projection',
+            artifactReference: { kind: 'output-writer', artifactId: 'artifact:projection', digest: 'sha256:projection' },
+        })
+        await queue.completeSucceeded({
+            jobId: 'job:3',
+            leaseOwner: 'worker:projection',
+            leaseToken: lease?.leaseToken ?? '',
+            now: LATER,
+            outputTransactionId: 'output:projection',
+            artifactReference: { kind: 'output-writer', artifactId: 'artifact:projection', digest: 'sha256:projection' },
+        })
+        await expect(queue.getBatchProjectionMeta('batch:1')).resolves.toMatchObject({
+            revision: 6,
+            summary: {
+                completed: 1,
+                progressCurrent: 1,
+                states: { queued: 7, succeeded: 1 },
+                recentCompletedAt: [LATER],
+            },
+        })
+    })
 
     it('records attempts, output references, and terminal idempotency while rejecting terminal mutation', async () => {
         const factory = new IDBFactory()

@@ -60,7 +60,12 @@ export function PromptEditorSurface() {
     const activePrompt = promptSlots.find(slot => slot.id === activePromptSlot) ?? promptSlots[0]
 
     return (
-        <div className="flex min-h-40 flex-none flex-col gap-2 rounded-panel bg-canvas p-2">
+        <div
+            className="flex min-h-40 flex-none flex-col gap-2 rounded-panel bg-canvas p-2"
+            // A dock-level test boundary keeps responsive smoke checks coupled to
+            // this shared editor surface, not react-simple-code-editor internals.
+            data-testid="prompt-editor-surface"
+        >
             <div className="grid grid-cols-4 gap-1" role="tablist" aria-label={t('prompt.title', '프롬프트')}>
                 {promptSlots.map(slot => {
                     const isActive = slot.id === activePrompt.id

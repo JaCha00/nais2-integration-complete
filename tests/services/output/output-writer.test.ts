@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { sha256Bytes } from '@/lib/binary-digest'
 import type { MetadataWriteRequest, OutputMetadataWriter } from '@/services/output/metadata-writer'
 import {
     OutputWriter,
@@ -276,6 +277,166 @@ describe('OutputWriter fault containment', () => {
         })).resolves.toEqual({ transactionId: 'txn-terminal', action: 'retried' })
         expect(adapter.file('output/result.png')).toEqual(IMAGE_BYTES)
         expectNoTransactionArtifacts(adapter)
+    })
+
+    it('returns opt-in final image facts with a projected portable directory', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const outputWriter = writer(adapter, 'txn-final-image-facts')
+
+        const outcome = await outputWriter.write(request({
+            includeFinalImageFacts: true,
+            destination: {
+                portableDirectory: {
+                    kind: 'standard',
+                    root: 'app-data',
+                    segments: ['queue', 'outputs'],
+                    displayPath: 'C:\\Users\\private\\queue\\outputs',
+                },
+                directory: 'output',
+                useAbsolutePath: false,
+                workflowDefaultDirectory: 'NAIS_Output',
+                extension: 'png',
+                fileName: 'result.png',
+                collisionPolicy: 'unique',
+            },
+        }))
+
+        expect(outcome.status).toBe('committed')
+        if (outcome.status !== 'committed') throw new Error('Expected the output transaction to commit')
+        expect(outcome.result.contentChecksum).toBeUndefined()
+        expect(outcome.result.finalImage).toEqual({
+            contentChecksum: await sha256Bytes(IMAGE_BYTES),
+            byteSize: IMAGE_BYTES.byteLength,
+            portableDirectory: {
+                kind: 'standard',
+                root: 'app-data',
+                segments: ['queue', 'outputs'],
+            },
+        })
+        expect(JSON.stringify(outcome.result.finalImage)).not.toContain('C:\\Users\\private')
+        expectNoTransactionArtifacts(adapter)
+    })
+
+    it('replays final image facts from the files-committed recovery journal', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const outputWriter = writer(adapter, 'txn-final-image-recovery')
+        let recoveredFinalImage: unknown
+
+        await expect(outputWriter.write(request({
+            includeFinalImageFacts: true,
+            terminalWorkflowCommit: true,
+            destination: {
+                portableDirectory: {
+                    kind: 'bookmark',
+                    bookmarkId: 'output:selected',
+                    segments: ['queue'],
+                    displayPath: 'D:\\private-output\\queue',
+                },
+                directory: 'output',
+                useAbsolutePath: false,
+                workflowDefaultDirectory: 'NAIS_Output',
+                extension: 'png',
+                fileName: 'result.png',
+                collisionPolicy: 'unique',
+            },
+            commitWorkflow: () => {
+                adapter.fault = { operation: 'write-journal' }
+            },
+        }))).rejects.toBeInstanceOf(OutputWriterError)
+
+        await expect(outputWriter.recoverTransaction('txn-final-image-recovery', {
+            mode: 'retry-workflow',
+            commitWorkflow: result => {
+                recoveredFinalImage = result.finalImage
+            },
+        })).resolves.toEqual({ transactionId: 'txn-final-image-recovery', action: 'retried' })
+
+        expect(recoveredFinalImage).toEqual({
+            contentChecksum: await sha256Bytes(IMAGE_BYTES),
+            byteSize: IMAGE_BYTES.byteLength,
+            portableDirectory: {
+                kind: 'bookmark',
+                bookmarkId: 'output:selected',
+                segments: ['queue'],
+            },
+        })
+        expectNoTransactionArtifacts(adapter)
+    })
+
+    it('omits only a raw absolute output directory from opt-in final image facts', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        vi.spyOn(adapter, 'resolveDirectory').mockResolvedValue({
+            path: 'C:\\raw-output',
+            displayPath: 'C:\\raw-output',
+            capabilityFallbackUsed: false,
+        })
+
+        const outcome = await writer(adapter, 'txn-absolute-final-image').write(request({
+            includeFinalImageFacts: true,
+        }))
+
+        expect(outcome.status).toBe('committed')
+        if (outcome.status !== 'committed') throw new Error('Expected the output transaction to commit')
+        expect(outcome.result.finalImage).toEqual({
+            contentChecksum: await sha256Bytes(IMAGE_BYTES),
+            byteSize: IMAGE_BYTES.byteLength,
+        })
+        expectNoTransactionArtifacts(adapter)
+    })
+
+    it('rejects malformed portable final image facts before retrying the workflow', async () => {
+        const adapter = new InMemoryOutputAdapter()
+        const commitWorkflow = vi.fn()
+        const checksum = await sha256Bytes(IMAGE_BYTES)
+        await adapter.writeJournal('txn-invalid-final-image', new TextEncoder().encode(JSON.stringify({
+            format: 'nais2-output-transaction',
+            version: 1,
+            transactionId: 'txn-invalid-final-image',
+            createdAt: FIXED_NOW.toISOString(),
+            updatedAt: FIXED_NOW.toISOString(),
+            phase: 'files-committed',
+            fileName: 'result.png',
+            finalImage: {
+                contentChecksum: checksum,
+                byteSize: IMAGE_BYTES.byteLength,
+                portableDirectory: {
+                    kind: 'standard',
+                    root: 'app-data',
+                    segments: ['queue', '..'],
+                },
+            },
+            directory: {
+                path: 'output',
+                displayPath: '/app-data/output',
+                baseDir: 1,
+                capabilityFallbackUsed: false,
+            },
+            artifacts: [{
+                kind: 'image',
+                temp: {
+                    path: 'output/.result.png.nais2-txn-txn-invalid-final-image.image.tmp',
+                    displayPath: '/app-data/output/.result.png.nais2-txn-txn-invalid-final-image.image.tmp',
+                    baseDir: 1,
+                },
+                final: {
+                    path: 'output/result.png',
+                    displayPath: '/app-data/output/result.png',
+                    baseDir: 1,
+                },
+                committed: true,
+            }],
+            thumbnailStaged: false,
+            commitStarted: true,
+        })))
+
+        await expect(writer(adapter).recoverTransaction('txn-invalid-final-image', {
+            mode: 'retry-workflow',
+            commitWorkflow,
+        })).resolves.toMatchObject({
+            transactionId: 'txn-invalid-final-image',
+            action: 'failed',
+        })
+        expect(commitWorkflow).not.toHaveBeenCalled()
     })
 
     it('cancels before destination staging without creating files or a journal', async () => {

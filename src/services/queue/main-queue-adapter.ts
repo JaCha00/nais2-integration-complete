@@ -18,6 +18,11 @@ import { publishGeneratedArtifact } from '@/stores/artifact-lifecycle-store'
 import type { QueueExecutorContext } from './durable-queue-coordinator'
 import { QueueExecutionError } from './durable-queue-coordinator'
 import {
+    registerQueueArtifact,
+    rollbackQueueArtifactRegistration,
+    type QueueArtifactRegistration,
+} from './queue-artifact-lineage'
+import {
     getRuntimeQueueRepository,
     type CreateBatchAndEnqueueResult,
     type EnqueueGenerationJobInput,
@@ -241,9 +246,11 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
         let historyCommitted = false
         const historyId = `queue-history:${job.id}`
         let sequenceConflict = false
+        let artifactRegistration: QueueArtifactRegistration | null = null
         const output = await getRuntimeOutputWriter().write({
             transactionId,
             sourceJobId: job.id,
+            includeFinalImageFacts: true,
             destination: {
                 ...(payload.mainWorkflow.output.portableDirectory === undefined
                     ? {}
@@ -273,6 +280,7 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
                     sequenceConflict = true
                     throw new Error('Fragment sequence changed before durable Main output commit')
                 }
+                artifactRegistration = await registerQueueArtifact(job, artifactReference, outputResult)
                 useGenerationStore.getState().addToHistory({
                     id: historyId,
                     url: outputResult.thumbnailDataUrl ?? imageDataUrl,
@@ -280,19 +288,38 @@ export async function executeMainQueueJob(job: GenerationJob, context: QueueExec
                     seed: params.seed,
                     timestamp: new Date(),
                     sentPayloadSummary: result.sentPayloadSummary,
+                    ...(artifactRegistration === null
+                        ? {}
+                        : {
+                            artifactId: artifactRegistration.record.artifactId,
+                            sourceJobId: job.id,
+                            ...(job.sceneId === null ? {} : { sourceSceneId: job.sceneId }),
+                        }),
                 })
                 historyCommitted = true
                 useGenerationStore.getState().setPreviewImage(imageDataUrl)
-                publishGeneratedArtifact({ path: outputResult.path })
+                publishGeneratedArtifact({
+                    path: outputResult.path,
+                    ...(artifactRegistration === null
+                        ? {}
+                        : {
+                            artifactId: artifactRegistration.record.artifactId,
+                            sourceJobId: job.id,
+                            ...(job.sceneId === null ? {} : { sourceSceneId: job.sceneId }),
+                        }),
+                })
                 await context.commitOutput(transactionId, artifactReference)
             },
-            rollbackWorkflow: () => {
-                if (!historyCommitted) return
-                useGenerationStore.setState(state => ({
-                    history: state.history.filter(item => item.id !== historyId),
-                    previewImage: state.previewImage === imageDataUrl ? null : state.previewImage,
-                }))
-                historyCommitted = false
+            rollbackWorkflow: async () => {
+                if (historyCommitted) {
+                    useGenerationStore.setState(state => ({
+                        history: state.history.filter(item => item.id !== historyId),
+                        previewImage: state.previewImage === imageDataUrl ? null : state.previewImage,
+                    }))
+                    historyCommitted = false
+                }
+                await rollbackQueueArtifactRegistration(artifactRegistration)
+                artifactRegistration = null
             },
         }).catch(error => {
             if (sequenceConflict) {

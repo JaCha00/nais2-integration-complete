@@ -3,7 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { indexedDBStorage } from '@/lib/indexed-db'
 import { useAuthStore } from './auth-store'
 import { useSettingsStore } from './settings-store'
-import { generateImage, generateImageStream, type GenerationParams } from '@/services/novelai-api'
+import { type GenerationParams } from '@/services/novelai-api'
+import { executeMainGenerationTransport } from '@/services/generation/main-transport-executor'
 import {
     createCharacterStoreResourceRepository,
     useCharacterStore,
@@ -70,6 +71,10 @@ interface HistoryItem {
     seed: number
     timestamp: Date
     sentPayloadSummary?: string
+    /** Queue-backed history keeps its durable artifact lineage when available. */
+    artifactId?: string
+    sourceJobId?: string
+    sourceSceneId?: string
 }
 
 type CharacterPromptParams = NonNullable<GenerationParams['characterPrompts']>
@@ -1503,24 +1508,28 @@ export const useGenerationStore = create<GenerationState>()(
 
                         if (!token) throw new Error('Execution credential is unavailable')
 
-                        let result
-                        const streamMimeType = imageFormat === 'webp' ? 'image/webp' : 'image/png'
                         if (canUseStreaming) {
                             console.log('[Generate] Using streaming API...')
-                            result = await generateImageStream(token, generationParams, (progress, partialImage) => {
-                                if (get().isCancelled || get().generationSessionId !== sessionId) return
-                                // Update preview image directly (no null clearing - causes flicker)
-                                if (partialImage) {
-                                    set({ streamProgress: progress, previewImage: `data:${streamMimeType};base64,${partialImage}` })
+                        } else {
+                            console.log('[Generate] Using standard API...')
+                        }
+                        const result = await executeMainGenerationTransport({
+                            token,
+                            params: generationParams,
+                            imageFormat,
+                            streaming: canUseStreaming,
+                            signal: abortController.signal,
+                            shouldPublishProgress: () => !(get().isCancelled || get().generationSessionId !== sessionId),
+                            onProgress: (progress, previewImage) => {
+                                // The store owns session state; this executor only normalizes provider previews.
+                                if (previewImage) {
+                                    set({ streamProgress: progress, previewImage })
                                 } else {
                                     set({ streamProgress: progress })
                                 }
-                            }, abortController.signal)
-                            set({ streamProgress: 0 })
-                        } else {
-                            console.log('[Generate] Using standard API...')
-                            result = await generateImage(token, generationParams, abortController.signal)
-                        }
+                            },
+                        })
+                        if (canUseStreaming) set({ streamProgress: 0 })
 
                         // Check if cancelled or session changed after API call
                         if (get().isCancelled || get().generationSessionId !== sessionId) {

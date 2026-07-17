@@ -1,17 +1,20 @@
 import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { describe, expect, it, vi } from 'vitest'
 
+import { createArtifactRecord, type ArtifactRecord } from '@/domain/organizer/types'
 import type { QueueArtifactReference } from '@/domain/queue/types'
-import type { OutputWriter } from '@/services/output/output-writer'
+import type { OutputWriteResult, OutputWriter } from '@/services/output/output-writer'
 import {
     IndexedDBQueueRepository,
     type EnqueueGenerationJobInput,
 } from '@/services/queue/indexeddb-queue-repository'
 import { createGenerationJobSnapshot } from '@/services/queue/job-snapshot'
+import type { QueueArtifactRepository } from '@/services/queue/queue-artifact-lineage'
 import { recoverQueueLinkedOutputs } from '@/services/queue/queue-output-recovery'
 
 const NOW = '2026-07-14T09:00:00.000Z'
 const LATER = '2026-07-14T09:01:00.000Z'
+const CHECKSUM = `sha256:${'a'.repeat(64)}`
 
 function queue(): IndexedDBQueueRepository {
     const factory = new IDBFactory()
@@ -34,9 +37,40 @@ function job(): EnqueueGenerationJobInput {
     }
 }
 
+function recoveredOutput(): OutputWriteResult {
+    return {
+        transactionId: 'txn-bound',
+        fileName: 'queue-output.png',
+        path: 'C:/Pictures/NAIS_Output/queue-output.png',
+        file: { path: 'NAIS_Output/queue-output.png', displayPath: 'C:/Pictures/NAIS_Output/queue-output.png' },
+        directory: { path: 'NAIS_Output', displayPath: 'C:/Pictures/NAIS_Output', capabilityFallbackUsed: false },
+        capabilityFallbackUsed: false,
+        finalImage: {
+            contentChecksum: CHECKSUM,
+            byteSize: 222,
+            portableDirectory: { kind: 'standard', root: 'pictures', segments: ['NAIS_Output'] },
+        },
+    }
+}
+
+function artifactRepository() {
+    const records = new Map<string, ArtifactRecord>()
+    const value: QueueArtifactRepository = {
+        get: async artifactId => records.get(artifactId) ?? null,
+        putOriginal: async input => {
+            const record = createArtifactRecord(input)
+            records.set(record.artifactId, record)
+            return record
+        },
+        removeOriginalIfUnmodified: async () => true,
+    }
+    return { value, records }
+}
+
 describe('queue-linked OutputWriter recovery', () => {
     it('retries workflow commit from a pre-bound files-committed journal before lease recovery', async () => {
         const repository = queue()
+        const artifacts = artifactRepository()
         await repository.createBatchAndEnqueue({
             batch: {
                 id: 'batch:1', workflow: 'main', createdAt: NOW,
@@ -62,7 +96,7 @@ describe('queue-linked OutputWriter recovery', () => {
             options: Parameters<OutputWriter['recoverTransaction']>[1],
         ) => {
             if (options?.canCommit?.()) {
-                await options.commitWorkflow?.({ transactionId: 'txn-bound' } as never)
+                await options.commitWorkflow?.(recoveredOutput())
                 return { transactionId: 'txn-bound', action: 'retried' as const }
             }
             return { transactionId: 'txn-bound', action: 'rolled-back' as const }
@@ -74,7 +108,10 @@ describe('queue-linked OutputWriter recovery', () => {
             recoverTransaction,
         } as unknown as OutputWriter
 
-        const result = await recoverQueueLinkedOutputs(repository, writer, { now: LATER })
+        const result = await recoverQueueLinkedOutputs(repository, writer, {
+            now: LATER,
+            artifactRepository: artifacts.value,
+        })
 
         expect(result).toEqual([{ transactionId: 'txn-bound', action: 'retried' }])
         expect(recoverTransaction).toHaveBeenCalledWith('txn-bound', expect.objectContaining({
@@ -85,6 +122,12 @@ describe('queue-linked OutputWriter recovery', () => {
             outputTransactionId: 'txn-bound',
             artifactReference: artifact,
             leaseOwner: null,
+        })
+        expect(artifacts.records.get('artifact:1')).toMatchObject({
+            sourceJobId: 'job:1',
+            sourceSceneId: null,
+            contentChecksum: CHECKSUM,
+            original: { file: { fileName: 'queue-output.png' }, size: 222 },
         })
     })
 })

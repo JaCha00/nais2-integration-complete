@@ -17,10 +17,18 @@ describe('artifact lifecycle store', () => {
             data: 'data:image/png;base64,AA==',
         })
 
-        publishGeneratedArtifact({ path: 'C:/Pictures/second.webp' })
+        publishGeneratedArtifact({
+            path: 'C:/Pictures/second.webp',
+            artifactId: 'artifact:queue-2',
+            sourceJobId: 'queue-2',
+            sourceSceneId: 'scene-2',
+        })
         expect(useArtifactLifecycleStore.getState().latestGeneratedArtifact).toEqual({
             sequence: 2,
             path: 'C:/Pictures/second.webp',
+            artifactId: 'artifact:queue-2',
+            sourceJobId: 'queue-2',
+            sourceSceneId: 'scene-2',
         })
     })
 })

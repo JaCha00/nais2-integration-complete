@@ -42,6 +42,18 @@ export interface ArtifactPage {
     readonly nextCursor: string | null
 }
 
+/**
+ * Narrow rollback guard for an original that was registered in the same
+ * OutputWriter transaction. Distribution/remote state makes the record shared
+ * authority, so those records must remain immutable and cannot be removed.
+ */
+export interface RemoveOriginalIfUnmodifiedInput {
+    readonly artifactId: string
+    readonly file: CreateArtifactRecordInput['file']
+    readonly contentChecksum: string
+    readonly size: number
+}
+
 function requestValue<T>(request: IDBRequest<T>): Promise<T> {
     return new Promise((resolve, reject) => {
         request.onsuccess = () => resolve(request.result)
@@ -279,6 +291,39 @@ export class IndexedDBArtifactRepository {
         const readback = await this.get(candidate.artifactId)
         if (readback === null) throw new ArtifactRepositoryError('E_ARTIFACT_NOT_FOUND', 'Artifact write was not readable.')
         return readback
+    }
+
+    async removeOriginalIfUnmodified(input: RemoveOriginalIfUnmodifiedInput): Promise<boolean> {
+        const expectedFile = projectArtifactPortableFile(input.file)
+        if (!input.artifactId.trim()
+            || !isOrganizerChecksum(input.contentChecksum)
+            || !Number.isSafeInteger(input.size)
+            || input.size < 0) {
+            throw new ArtifactRepositoryError('E_ARTIFACT_RECORD_INVALID', 'Artifact rollback identity is invalid.')
+        }
+        const database = await this.open()
+        const transaction = database.transaction('artifacts', 'readwrite')
+        const store = transaction.objectStore('artifacts')
+        const existing = await requestValue(store.get(input.artifactId)) as ArtifactRecord | undefined
+        if (existing === undefined) {
+            await transactionDone(transaction)
+            return false
+        }
+        validateArtifactRecord(existing)
+        const removable = existing.version === 1
+            && existing.distributionVariants.length === 0
+            && existing.remoteObjectRefs.length === 0
+            && existing.sidecar === null
+            && existing.contentChecksum === input.contentChecksum
+            && existing.original.size === input.size
+            && JSON.stringify(existing.original.file) === JSON.stringify(expectedFile)
+        if (!removable) {
+            await transactionDone(transaction)
+            return false
+        }
+        store.delete(input.artifactId)
+        await transactionDone(transaction)
+        return true
     }
 
     async get(artifactId: string): Promise<ArtifactRecord | null> {

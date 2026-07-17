@@ -53,6 +53,13 @@ describe('Main composition UI contract', () => {
         expect(mainMode).not.toContain('setModuleSheetOpen(false)')
     })
 
+    it('hands a selected module from its sheet to the Inspector at every desktop width', async () => {
+        const mainMode = await source('src/pages/MainMode.tsx')
+
+        expect(mainMode).toMatch(/const handleSelectModule[\s\S]*?setSelectedModuleId\(moduleId\)[\s\S]*?if \(moduleSheetOpen\)[\s\S]*?setInspectorSheetOpen\(true\)/)
+        expect(mainMode).not.toContain('isDockedWorkspace')
+    })
+
     it('keeps raw prompt authoring behind the existing Prompt sheet compatibility entry', async () => {
         const mainMode = await source('src/pages/MainMode.tsx')
 

@@ -92,11 +92,52 @@ function sequentialMainJobs(count: number): EnqueueGenerationJobInput[] {
     }))
 }
 
+function workflowJob(input: {
+    id: string
+    batchId: string
+    workflow: 'main' | 'scene'
+    streaming?: boolean
+    ordinal?: number
+}): EnqueueGenerationJobInput {
+    return {
+        id: input.id,
+        batchId: input.batchId,
+        workflow: input.workflow,
+        sceneId: input.workflow === 'scene' ? `scene:${input.id}` : null,
+        createdAt: NOW,
+        priority: 0,
+        ordinal: input.ordinal ?? 0,
+        snapshot: snapshot(input.streaming),
+        compositionPlanHash: null,
+        maxAttempts: 3,
+        idempotencyKey: `job-key:${input.id}`,
+    }
+}
+
 async function enqueue(queue: IndexedDBQueueRepository, inputs: EnqueueGenerationJobInput[]): Promise<void> {
     await queue.createBatchAndEnqueue({
         batch: {
             id: 'batch:1', workflow: inputs[0]?.workflow ?? 'scene', createdAt: NOW,
             failurePolicy: 'continue', origin: 'fresh', idempotencyKey: 'batch-key:1',
+        },
+        jobs: inputs,
+    })
+}
+
+async function enqueueWorkflowBatch(
+    queue: IndexedDBQueueRepository,
+    batchId: string,
+    workflow: 'main' | 'scene',
+    inputs: EnqueueGenerationJobInput[],
+): Promise<void> {
+    await queue.createBatchAndEnqueue({
+        batch: {
+            id: batchId,
+            workflow,
+            createdAt: NOW,
+            failurePolicy: 'continue',
+            origin: 'fresh',
+            idempotencyKey: `batch-key:${batchId}`,
         },
         jobs: inputs,
     })
@@ -146,6 +187,87 @@ async function waitUntil(predicate: () => boolean): Promise<void> {
 }
 
 describe('durable queue coordinator', () => {
+    it('uses two free token slots for overlapping Main and Scene work', async () => {
+        const queue = repository('mixed-workflow-overlap')
+        await enqueueWorkflowBatch(queue, 'batch:main', 'main', [workflowJob({
+            id: 'job:main', batchId: 'batch:main', workflow: 'main',
+        })])
+        await enqueueWorkflowBatch(queue, 'batch:scene', 'scene', [workflowJob({
+            id: 'job:scene', batchId: 'batch:scene', workflow: 'scene',
+        })])
+
+        let releaseBoth: () => void = () => undefined
+        const bothStarted = new Promise<void>(resolve => { releaseBoth = resolve })
+        const started: string[] = []
+        const slotsByJob = new Map<string, string>()
+        const runtime = coordinator(queue, async (context, jobId) => {
+            started.push(jobId)
+            slotsByJob.set(jobId, context.tokenSlotId)
+            await bothStarted
+            await commit(context, jobId)
+        })
+
+        const draining = runtime.drain()
+        try {
+            await waitUntil(() => started.length === 2)
+            expect(started).toEqual(expect.arrayContaining(['job:main', 'job:scene']))
+            expect(new Set(slotsByJob.values())).toEqual(new Set(['slot-1', 'slot-2']))
+        } finally {
+            releaseBoth()
+        }
+        await draining
+        expect(await queue.getJob('job:main')).toMatchObject({ state: 'succeeded' })
+        expect(await queue.getJob('job:scene')).toMatchObject({ state: 'succeeded' })
+    })
+
+    it('keeps a streaming job exclusive across Main and Scene workflows', async () => {
+        const queue = repository('streaming-mixed-workflow')
+        await enqueueWorkflowBatch(queue, 'batch:main', 'main', [workflowJob({
+            id: 'job:main', batchId: 'batch:main', workflow: 'main',
+        })])
+        await enqueueWorkflowBatch(queue, 'batch:scene', 'scene', [workflowJob({
+            id: 'job:scene-stream', batchId: 'batch:scene', workflow: 'scene', streaming: true,
+        })])
+
+        let active = 0
+        let maximum = 0
+        const runtime = coordinator(queue, async (context, jobId) => {
+            active += 1
+            maximum = Math.max(maximum, active)
+            await new Promise(resolve => setTimeout(resolve, 5))
+            await commit(context, jobId)
+            active -= 1
+        })
+
+        await runtime.drain()
+        expect(maximum).toBe(1)
+        expect(await queue.getJob('job:main')).toMatchObject({ state: 'succeeded' })
+        expect(await queue.getJob('job:scene-stream')).toMatchObject({ state: 'succeeded' })
+    })
+
+    it('preserves Main one-slot execution while Scene keeps its separate capacity', async () => {
+        const queue = repository('main-workflow-cap')
+        await enqueueWorkflowBatch(queue, 'batch:main', 'main', [
+            workflowJob({ id: 'job:main:0', batchId: 'batch:main', workflow: 'main', ordinal: 0 }),
+            workflowJob({ id: 'job:main:1', batchId: 'batch:main', workflow: 'main', ordinal: 1 }),
+            workflowJob({ id: 'job:main:2', batchId: 'batch:main', workflow: 'main', ordinal: 2 }),
+        ])
+
+        let active = 0
+        let maximum = 0
+        const runtime = coordinator(queue, async (context, jobId) => {
+            active += 1
+            maximum = Math.max(maximum, active)
+            await new Promise(resolve => setTimeout(resolve, 5))
+            await commit(context, jobId)
+            active -= 1
+        })
+
+        await runtime.drain()
+        expect(maximum).toBe(1)
+        expect((await queue.getBatchSummary('batch:main')).states.succeeded).toBe(3)
+    })
+
     it('preserves the Scene dual-token maximum concurrency', async () => {
         const queue = repository('dual')
         await enqueue(queue, jobs(5))

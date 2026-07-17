@@ -3,6 +3,8 @@ const ORGANIZER_HANDOFF_KEY = 'nais2:organizer-handoff'
 export interface OrganizerHandoff {
     path: string
     fileName: string
+    /** Existing artifact identity allows Organizer to reuse queue lineage. */
+    artifactId?: string
 }
 
 /**
@@ -20,9 +22,12 @@ export function consumeOrganizerHandoff(): OrganizerHandoff | null {
     if (value === null) return null
     try {
         const parsed = JSON.parse(value) as Partial<OrganizerHandoff>
-        return typeof parsed.path === 'string' && typeof parsed.fileName === 'string'
-            ? { path: parsed.path, fileName: parsed.fileName }
-            : null
+        if (typeof parsed.path !== 'string' || typeof parsed.fileName !== 'string') return null
+        return {
+            path: parsed.path,
+            fileName: parsed.fileName,
+            ...(typeof parsed.artifactId === 'string' ? { artifactId: parsed.artifactId } : {}),
+        }
     } catch {
         return null
     }

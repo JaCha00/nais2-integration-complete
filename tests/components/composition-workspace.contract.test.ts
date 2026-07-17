@@ -180,6 +180,9 @@ describe('composition workspace source contracts', () => {
             source('src/components/composition-workspace/CompositionWorkspaceLayout.tsx'),
         ])
         expect(bar).toContain('data-testid="composition-command-bar"')
+        expect(bar).toContain('data-testid="composition-open-modules"')
+        expect(bar).toContain('data-testid="composition-open-inspector"')
+        expect(bar).not.toContain('2xl:hidden')
         expect(bar).toContain('generation.onCancel')
         expect(bar).toContain('generation.onGenerate')
         expect(dock).toContain('safe-area-inset-bottom')

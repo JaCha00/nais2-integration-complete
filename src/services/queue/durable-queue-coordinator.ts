@@ -110,9 +110,10 @@ function sequenceDependencyDisposition(
     return waitsForPredecessor ? 'wait' : 'ready'
 }
 
-function executionLimit(workflow: GenerationWorkflow, singleWorker: boolean): number {
-    if (workflow !== 'scene' || singleWorker) return 1
-    return 2
+function executionLimit(workflow: GenerationWorkflow): number {
+    // Token slots are shared by Main and Scene, while provider safety limits stay
+    // workflow-local: Main commits one durable proposal at a time and Scene may use two slots.
+    return workflow === 'scene' ? 2 : 1
 }
 
 function classifyFailure(error: unknown): QueueExecutionError {
@@ -292,13 +293,15 @@ export class DurableQueueCoordinator {
                 if (Date.parse(candidate.readyAt) > Date.parse(this.now())) continue
                 if (slotIndex >= slots.length) continue
                 const activeExecutions = [...this.active.values()]
-                const activeWorkflow = activeExecutions[0]?.job.workflow
                 const activeSingle = activeExecutions.some(execution => execution.singleWorker)
-                if (activeWorkflow !== undefined && candidate.workflow !== activeWorkflow) continue
                 const singleWorker = requiresSingleWorker(candidate)
-                const current = this.active.size
-                if (activeSingle || (singleWorker && current > 0)) continue
-                if (current >= executionLimit(candidate.workflow, singleWorker)) return
+                const activeForWorkflow = activeExecutions.filter(execution => (
+                    execution.job.workflow === candidate.workflow
+                )).length
+                // Streaming executions remain globally exclusive, but normal Main and Scene work
+                // may share vacant token slots up to their independent provider limits.
+                if (activeSingle || (singleWorker && activeExecutions.length > 0)) continue
+                if (activeForWorkflow >= executionLimit(candidate.workflow)) continue
 
                 const slot = slots[slotIndex]
                 const owner = `${this.ownerPrefix}:${slot.slotId}`
@@ -311,7 +314,7 @@ export class DurableQueueCoordinator {
                 if (leased === null) continue
                 slotIndex += 1
                 this.launch(leased, slot, owner, singleWorker)
-                if (singleWorker || leased.workflow !== 'scene') return
+                if (singleWorker) return
             }
             cursor = page.nextCursor
         } while (cursor !== null)

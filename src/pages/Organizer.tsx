@@ -1,5 +1,6 @@
 import { open } from '@tauri-apps/plugin-dialog'
 import { dirname } from '@tauri-apps/api/path'
+import type { TFunction } from 'i18next'
 import { FolderOpen, GripVertical, RefreshCw, RotateCcw, UploadCloud } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -74,12 +75,32 @@ function entryKey(entry: OrganizerCollectionEntry): string {
     return entry.entryId
 }
 
-function thumbnailAlt(entry: OrganizerCollectionEntry): string {
-    return `Thumbnail for ${entry.file.fileName}`
+function samePortableFile(
+    left: OrganizerCollectionEntry['file'],
+    right: ArtifactRecord['original']['file'],
+): boolean {
+    return left.fileName === right.fileName
+        && JSON.stringify(left.directory) === JSON.stringify(right.directory)
 }
 
-function filenamePreview(entry: OrganizerCollectionEntry | null, policy: OrganizerPolicyState): string {
-    if (entry === null) return 'Select an image to preview its distribution filename.'
+function collectionForArtifact(record: ArtifactRecord): OrganizerCollection {
+    return {
+        id: `artifact-source:${record.artifactId}`,
+        label: record.original.file.fileName,
+        directory: record.original.file.directory,
+        // This can be a standard root or an existing bookmark. It is not the
+        // managed Organizer collection, but its portable reference is already
+        // owned by the immutable ArtifactRecord.
+        source: 'external',
+    }
+}
+
+function thumbnailAlt(t: TFunction, entry: OrganizerCollectionEntry): string {
+    return t('organizer.thumbnailAlt', { fileName: entry.file.fileName })
+}
+
+function filenamePreview(t: TFunction, entry: OrganizerCollectionEntry | null, policy: OrganizerPolicyState): string {
+    if (entry === null) return t('organizer.selectImageForFilenamePreview')
     const originalName = splitFileName(entry.file.fileName).stem
     const rendered = renderFilenameTemplate({
         template: policy.filenameTemplate,
@@ -111,29 +132,32 @@ function makePolicy(collection: OrganizerCollection, state: OrganizerPolicyState
     }
 }
 
-function r2KeyPreview(profile: R2ProfileV2 | null, prefix: string, fileName: string): string | null {
+function r2KeyPreview(t: TFunction, profile: R2ProfileV2 | null, prefix: string, fileName: string): string | null {
     if (profile === null) return null
     const parts = [profile.prefix, prefix, fileName].flatMap(part => part.split('/').filter(Boolean))
     if (parts.length === 0 || parts.some(part => part === '.' || part === '..' || /[\\\0]/.test(part))) {
-        return 'Invalid remote key; remove empty, traversal, or backslash segments before executing.'
+        return t('organizer.invalidRemoteKey')
     }
     return parts.join('/')
 }
 
-function distributionModePreview(entry: OrganizerCollectionEntry | null, policy: OrganizerPolicyState): string {
-    if (entry === null) return 'Select an image to determine copy, rename, conversion, and strip work.'
+function distributionModePreview(t: TFunction, entry: OrganizerCollectionEntry | null, policy: OrganizerPolicyState): string {
+    if (entry === null) return t('organizer.selectImageForOperationPreview')
     if (entry.format === policy.format && policy.alphaPolicy === 'preserve') {
         return policy.metadataPolicy === 'strip'
-            ? 'Copy / rename + raw metadata strip (original pixels remain untouched).'
-            : 'Copy / rename (original container bytes are preserved in a new distribution variant).'
+            ? t('organizer.copyRenameStripMetadata')
+            : t('organizer.copyRenamePreserveBytes')
     }
-    return `Convert ${entry.format.toUpperCase()} → ${policy.format.toUpperCase()}${policy.alphaPolicy === 'flatten' ? ' + flatten alpha' : ''}.`
+    const formats = { sourceFormat: entry.format.toUpperCase(), targetFormat: policy.format.toUpperCase() }
+    return policy.alphaPolicy === 'flatten'
+        ? t('organizer.convertAndFlattenOperation', formats)
+        : t('organizer.convertOperation', formats)
 }
 
-function statusForResult(status: string): string {
-    if (status === 'succeeded') return 'Distribution committed. The original was left unchanged.'
-    if (status === 'cancelled') return 'Distribution cancelled before commit.'
-    return 'Distribution failed. Use Retry failed to re-run only failed items.'
+function statusForResult(t: TFunction, status: string): string {
+    if (status === 'succeeded') return t('organizer.distributionSucceeded')
+    if (status === 'cancelled') return t('organizer.distributionCancelled')
+    return t('organizer.distributionFailed')
 }
 
 /**
@@ -148,6 +172,13 @@ export default function Organizer() {
     const viewportRef = useRef<HTMLDivElement>(null)
     const refreshGeneration = useRef(0)
     const [collection, setCollection] = useState<OrganizerCollection>(() => collectionAdapter.managedCollection())
+    // The one-shot History handoff awaits this refresh. Keep its default collection
+    // and status translator outside the callback identity so setCollection cannot
+    // restart the handoff effect and erase its recovered artifact selection.
+    const collectionRef = useRef(collection)
+    const tRef = useRef(t)
+    collectionRef.current = collection
+    tRef.current = t
     const [siblingCollections, setSiblingCollections] = useState<readonly OrganizerCollection[]>([])
     const [entries, setEntries] = useState<readonly OrganizerCollectionEntry[]>([])
     const [records, setRecords] = useState<readonly ArtifactRecord[]>([])
@@ -161,27 +192,27 @@ export default function Organizer() {
     const [scrollTop, setScrollTop] = useState(0)
     const [viewport, setViewport] = useState({ width: 720, height: 480 })
     const [gridTileWidth, setGridTileWidth] = useState(168)
-    const [conflictPreview, setConflictPreview] = useState('Select an image to check conflicts.')
+    const [conflictPreview, setConflictPreview] = useState(() => t('organizer.selectImageForConflictPreview'))
     const [executionStage, setExecutionStage] = useState<'idle' | 'registering' | 'writing' | 'requeueing'>('idle')
     const [busy, setBusy] = useState(false)
-    const [status, setStatus] = useState('Choose an image, press Enter to place it in the next empty slot, then run a distribution.')
+    const [status, setStatus] = useState(() => t('organizer.initialStatus'))
     const diagnosticEvents = useDiagnosticsStore(state => state.events)
 
     const selectedEntry = useMemo(
         () => entries.find(entry => entry.entryId === selectedEntryId) ?? null,
         [entries, selectedEntryId],
     )
-    const selectedPreview = useMemo(() => filenamePreview(selectedEntry, policy), [selectedEntry, policy])
+    const selectedPreview = useMemo(() => filenamePreview(t, selectedEntry, policy), [policy, selectedEntry, t])
     const selectedProfile = useMemo(
         () => profiles.find(profile => profile.id === policy.r2ProfileId) ?? null,
         [policy.r2ProfileId, profiles],
     )
     const r2Capability = runtimeCapabilities.r2ForegroundUpload
     const remotePreview = useMemo(
-        () => r2KeyPreview(selectedProfile, policy.r2Prefix, selectedPreview),
-        [policy.r2Prefix, selectedPreview, selectedProfile],
+        () => r2KeyPreview(t, selectedProfile, policy.r2Prefix, selectedPreview),
+        [policy.r2Prefix, selectedPreview, selectedProfile, t],
     )
-    const modePreview = useMemo(() => distributionModePreview(selectedEntry, policy), [policy, selectedEntry])
+    const modePreview = useMemo(() => distributionModePreview(t, selectedEntry, policy), [policy, selectedEntry, t])
     const organizerDiagnostics = useMemo(
         () => diagnosticEvents.filter(event => event.operation === 'organizer.distribution').slice(0, 3),
         [diagnosticEvents],
@@ -203,7 +234,7 @@ export default function Organizer() {
         setRecords(next)
     }, [artifactRepository])
 
-    const refreshCollection = useCallback(async (nextCollection = collection) => {
+    const refreshCollection = useCallback(async (nextCollection = collectionRef.current): Promise<readonly OrganizerCollectionEntry[] | null> => {
         const requestId = ++refreshGeneration.current
         setBusy(true)
         try {
@@ -211,7 +242,8 @@ export default function Organizer() {
                 collectionAdapter.listEntries(nextCollection),
                 collectionAdapter.listSiblingCollections(nextCollection),
             ])
-            if (requestId !== refreshGeneration.current) return
+            if (requestId !== refreshGeneration.current) return null
+            collectionRef.current = nextCollection
             setCollection(nextCollection)
             setEntries(nextEntries)
             setSiblingCollections(siblings)
@@ -219,13 +251,17 @@ export default function Organizer() {
             setArtifactIdsByEntry({})
             setSelectedEntryId(current => nextEntries.some(entry => entry.entryId === current) ? current : null)
             await loadRecords()
-            if (requestId === refreshGeneration.current) setStatus(`${nextEntries.length.toLocaleString()} supported images are ready for virtual browsing.`)
+            if (requestId === refreshGeneration.current) {
+                setStatus(tRef.current('organizer.collectionReady', { count: nextEntries.length.toLocaleString() }))
+            }
+            return nextEntries
         } catch {
-            if (requestId === refreshGeneration.current) setStatus('This collection could not be read. Check the platform capability or choose another folder.')
+            if (requestId === refreshGeneration.current) setStatus(tRef.current('organizer.collectionReadFailed'))
+            return null
         } finally {
             if (requestId === refreshGeneration.current) setBusy(false)
         }
-    }, [collection, collectionAdapter, loadRecords])
+    }, [collectionAdapter, loadRecords])
 
     useEffect(() => {
         let active = true
@@ -235,18 +271,37 @@ export default function Organizer() {
             return () => { active = false }
         }
 
-        // History supplies a one-shot file hint. The adapter registers only its
-        // containing folder, then this view selects the matching scanned entry.
-        void dirname(handoff.path)
+        const selectPathFallback = () => dirname(handoff.path)
             .then(path => collectionAdapter.registerExternalDirectory(path))
             .then(async external => {
-                await refreshCollection(external)
-                if (!active) return
+                const nextEntries = await refreshCollection(external)
+                if (!active || nextEntries === null) return
                 setSelectedEntryId(`${external.id}:${handoff.fileName}`)
             })
+
+        // Queue-backed History carries an artifact id. Reuse its portable file
+        // identity before falling back to the legacy raw-path navigation hint,
+        // so a generated original is not re-imported under a second artifact id.
+        const reuseArtifact = async (): Promise<boolean> => {
+            if (handoff.artifactId === undefined) return false
+            const record = await artifactRepository.get(handoff.artifactId)
+            if (record === null) return false
+            const nextEntries = await refreshCollection(collectionForArtifact(record))
+            if (!active) return true
+            if (nextEntries === null) return false
+            const matchingEntry = nextEntries.find(entry => samePortableFile(entry.file, record.original.file))
+            if (matchingEntry === undefined) return false
+            setArtifactIdsByEntry(current => ({ ...current, [matchingEntry.entryId]: record.artifactId }))
+            setSelectedEntryId(matchingEntry.entryId)
+            return true
+        }
+
+        void reuseArtifact()
+            .then(reused => reused ? undefined : selectPathFallback())
+            .catch(() => selectPathFallback())
             .catch(() => { if (active) void refreshCollection() })
         return () => { active = false }
-    }, [collectionAdapter, refreshCollection])
+    }, [artifactRepository, collectionAdapter, refreshCollection])
 
     useEffect(() => {
         const viewportNode = viewportRef.current
@@ -264,26 +319,34 @@ export default function Organizer() {
     useEffect(() => {
         let active = true
         if (selectedEntry === null) {
-            setConflictPreview('Select an image to check conflicts.')
+            setConflictPreview(t('organizer.selectImageForConflictPreview'))
             return () => { active = false }
         }
-        setConflictPreview('Checking destination…')
+        setConflictPreview(t('organizer.checkingDestination'))
         void collectionAdapter.previewDistributionConflict(collection, selectedPreview)
             .then(preview => {
                 if (!active) return
                 if (preview.status === 'available') {
-                    setConflictPreview('Available in the current preflight. OutputWriter repeats this check at commit.')
+                    setConflictPreview(t('organizer.destinationAvailable'))
                     return
                 }
                 const collisions = [
-                    ...(preview.imageExists ? ['image'] : []),
-                    ...(preview.artifactSidecarExists ? ['artifact sidecar'] : []),
+                    ...(preview.imageExists ? [t('organizer.collisionImage')] : []),
+                    ...(preview.artifactSidecarExists ? [t('organizer.collisionArtifactSidecar')] : []),
                 ]
-                setConflictPreview(`Conflict preview: existing ${collisions.join(' and ')}. ${policy.collisionPolicy} policy will apply at commit.`)
+                const collisionPolicy = policy.collisionPolicy === 'unique'
+                    ? t('organizer.collisionPolicyUnique')
+                    : policy.collisionPolicy === 'overwrite'
+                        ? t('organizer.collisionPolicyOverwrite')
+                        : t('organizer.collisionPolicyError')
+                setConflictPreview(t('organizer.destinationConflict', {
+                    items: collisions.join(t('organizer.collisionListSeparator')),
+                    policy: collisionPolicy,
+                }))
             })
-            .catch(() => { if (active) setConflictPreview('Conflict preview is unavailable for this collection; commit will still preflight.') })
+            .catch(() => { if (active) setConflictPreview(t('organizer.conflictPreviewUnavailable')) })
         return () => { active = false }
-    }, [collection, collectionAdapter, policy.collisionPolicy, selectedEntry, selectedPreview])
+    }, [collection, collectionAdapter, policy.collisionPolicy, selectedEntry, selectedPreview, t])
 
     useEffect(() => {
         let active = true
@@ -311,9 +374,21 @@ export default function Organizer() {
     }, [])
 
     const ensureArtifact = useCallback(async (entry: OrganizerCollectionEntry): Promise<string> => {
-        const logicalArtifactId = await getArtifactId(entry)
         const bytes = await collectionAdapter.readEntry(entry)
         const contentChecksum = await sha256Bytes(bytes)
+        const linkedArtifactId = artifactIdsByEntry[entry.entryId]
+        if (linkedArtifactId !== undefined) {
+            const linked = await artifactRepository.get(linkedArtifactId)
+            // The handoff mapping is only a read model. Recheck file bytes here
+            // before distribution so an externally edited original becomes a new
+            // immutable import instead of silently reusing Queue provenance.
+            if (linked !== null
+                && linked.contentChecksum === contentChecksum
+                && samePortableFile(entry.file, linked.original.file)) {
+                return linked.artifactId
+            }
+        }
+        const logicalArtifactId = await getArtifactId(entry)
         const existing = await artifactRepository.get(logicalArtifactId)
         // The first import keeps the stable logical ID. If the same portable
         // file reference now contains different bytes, combine identity and
@@ -333,7 +408,7 @@ export default function Organizer() {
         await loadRecords()
         setArtifactIdsByEntry(current => ({ ...current, [entry.entryId]: artifactId }))
         return artifactId
-    }, [artifactRepository, collectionAdapter, getArtifactId, loadRecords])
+    }, [artifactIdsByEntry, artifactRepository, collectionAdapter, getArtifactId, loadRecords])
 
     const ensureThumbnail = useCallback(async (entry: OrganizerCollectionEntry) => {
         const key = entryKey(entry)
@@ -358,12 +433,12 @@ export default function Organizer() {
             const result = assignArtifactToNextEmptySlot(slots, artifactId)
             setSlots(result.slots)
             setStatus(result.ok
-                ? `${entry.file.fileName} was assigned to ${result.assignedSlotId}.`
-                : 'No empty slot is available. Clear a slot before assigning another image.')
+                ? t('organizer.assignedToSlot', { fileName: entry.file.fileName, slotId: result.assignedSlotId })
+                : t('organizer.noEmptySlot'))
         } catch {
-            setStatus('The selected original could not be registered. It remains untouched.')
+            setStatus(t('organizer.originalRegistrationFailed'))
         }
-    }, [ensureArtifact, slots])
+    }, [ensureArtifact, slots, t])
 
     const assignToSlot = useCallback(async (slotId: string, entryId: string | null) => {
         const entry = entries.find(candidate => candidate.entryId === entryId)
@@ -373,30 +448,33 @@ export default function Organizer() {
             const result = assignArtifactToSlot(slots, artifactId, slotId)
             setSlots(result.slots)
             setStatus(result.ok
-                ? `${entry.file.fileName} was assigned to ${slotId}.`
+                ? t('organizer.assignedToSlot', { fileName: entry.file.fileName, slotId })
                 : result.reason === 'duplicate-assignment'
-                    ? 'Duplicate assignment is blocked; each artifact can occupy only one slot.'
-                    : 'That slot cannot accept this assignment.')
+                    ? t('organizer.duplicateAssignmentBlocked')
+                    : t('organizer.slotAssignmentRejected'))
         } catch {
-            setStatus('The selected original could not be registered. It remains untouched.')
+            setStatus(t('organizer.originalRegistrationFailed'))
         }
-    }, [ensureArtifact, entries, slots])
+    }, [ensureArtifact, entries, slots, t])
 
     const chooseExternalFolder = useCallback(async () => {
         try {
             const capability = collectionAdapter.externalFolderCapability()
             if (!capability.supported) {
-                setStatus(`${capability.reason ?? 'External folders are unavailable.'} ${capability.alternative ?? ''}`.trim())
+                setStatus(t('organizer.externalFoldersUnavailable', {
+                    reason: capability.reason ?? t('organizer.externalFoldersUnavailableFallback'),
+                    alternative: capability.alternative ?? '',
+                }).trim())
                 return
             }
-            const selected = await open({ directory: true, multiple: false, title: 'Select Organizer folder' })
+            const selected = await open({ directory: true, multiple: false, title: t('organizer.selectFolderDialogTitle') })
             if (typeof selected !== 'string') return
             const external = collectionAdapter.registerExternalDirectory(selected)
             await refreshCollection(external)
         } catch {
-            setStatus('Folder selection was unavailable. Managed app-data collection is still available.')
+            setStatus(t('organizer.folderSelectionUnavailable'))
         }
-    }, [collectionAdapter, refreshCollection])
+    }, [collectionAdapter, refreshCollection, t])
 
     const moveSibling = useCallback((direction: -1 | 1) => {
         const choices = [collection, ...siblingCollections]
@@ -407,7 +485,7 @@ export default function Organizer() {
 
     const runDistribution = useCallback(async () => {
         if (selectedEntry === null) {
-            setStatus('Select an image before running a distribution.')
+            setStatus(t('organizer.selectImageBeforeDistribution'))
             return
         }
         setBusy(true)
@@ -416,30 +494,33 @@ export default function Organizer() {
             const artifactId = await ensureArtifact(selectedEntry)
             setExecutionStage('writing')
             const result = await distributionCoordinator.createAndRun(artifactId, makePolicy(collection, policy, r2Capability.supported))
-            setStatus(statusForResult(result.status))
+            setStatus(statusForResult(t, result.status))
             await loadRecords()
         } catch {
-            setStatus('Distribution could not start. The original remains unchanged.')
+            setStatus(t('organizer.distributionStartFailed'))
         } finally {
             setExecutionStage('idle')
             setBusy(false)
         }
-    }, [collection, distributionCoordinator, ensureArtifact, loadRecords, policy, r2Capability.supported, selectedEntry])
+    }, [collection, distributionCoordinator, ensureArtifact, loadRecords, policy, r2Capability.supported, selectedEntry, t])
 
     const retryFailed = useCallback(async () => {
         setBusy(true)
         try {
             setExecutionStage('requeueing')
             const summary = await distributionCoordinator.retryFailed()
-            setStatus(`Retried ${summary.distributionRuns.length} failed distribution item(s) and ${summary.remoteRetryCount} R2 follow-up item(s).`)
+            setStatus(t('organizer.retryCompleted', {
+                distributionCount: summary.distributionRuns.length,
+                remoteCount: summary.remoteRetryCount,
+            }))
             await loadRecords()
         } catch {
-            setStatus('Retry could not complete. Existing successful variants were not changed.')
+            setStatus(t('organizer.retryFailedMessage'))
         } finally {
             setExecutionStage('idle')
             setBusy(false)
         }
-    }, [distributionCoordinator, loadRecords])
+    }, [distributionCoordinator, loadRecords, t])
 
     const latestSelectedRecord = selectedEntry === null
         ? null
@@ -450,24 +531,31 @@ export default function Organizer() {
     const columnWidth = Math.max(GRID_TILE_MIN_WIDTH, Math.floor((viewport.width - Math.max(0, gridRange.columnCount - 1) * GRID_GAP) / gridRange.columnCount))
     const gridHeight = Math.ceil(entries.length / gridRange.columnCount) * (GRID_TILE_HEIGHT + GRID_GAP)
     const executionProgress = executionStage === 'registering' ? 25 : executionStage === 'writing' ? 75 : executionStage === 'requeueing' ? 50 : 0
+    const executionStageLabel = executionStage === 'idle'
+        ? t('organizer.executionStageIdle')
+        : executionStage === 'registering'
+            ? t('organizer.executionStageRegistering')
+            : executionStage === 'writing'
+                ? t('organizer.executionStageWriting')
+                : t('organizer.executionStageRequeueing')
 
     return (
         <main
             className="flex h-full min-h-0 min-w-0 flex-col overflow-y-auto bg-canvas lg:overflow-hidden"
-            aria-label={t('organizer.title', 'Organizer and export')}
+            aria-label={t('organizer.title')}
         >
             <header className="shrink-0 border-b border-border px-3 py-3 sm:px-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                        <h1 className="text-lg font-semibold">{t('organizer.title', 'Organizer and export')}</h1>
-                        <p className="text-xs text-muted-foreground">{t('organizer.description', 'Originals stay unchanged. Exports are created as copies, with optional cloud upload.')}</p>
+                        <h1 className="text-lg font-semibold">{t('organizer.title')}</h1>
+                        <p className="text-xs text-muted-foreground">{t('organizer.description')}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Button variant="outline" onClick={() => void refreshCollection()} disabled={busy}>
-                            <RefreshCw className="mr-2 h-4 w-4" />{t('organizer.refresh', 'Refresh')}
+                            <RefreshCw className="mr-2 h-4 w-4" />{t('organizer.refresh')}
                         </Button>
                         <Button variant="outline" onClick={() => void chooseExternalFolder()} disabled={busy}>
-                            <FolderOpen className="mr-2 h-4 w-4" />{t('organizer.chooseFolder', 'Choose folder')}
+                            <FolderOpen className="mr-2 h-4 w-4" />{t('organizer.chooseFolder')}
                         </Button>
                     </div>
                 </div>
@@ -481,7 +569,7 @@ export default function Organizer() {
                         moveSibling(1)
                     }
                 }}>
-                    <label className="sr-only" htmlFor="organizer-collection">{t('organizer.currentCollection', 'Current collection')}</label>
+                    <label className="sr-only" htmlFor="organizer-collection">{t('organizer.currentCollection')}</label>
                     <select
                         id="organizer-collection"
                         className="min-h-11 max-w-full rounded-control border border-input bg-background px-3"
@@ -498,27 +586,27 @@ export default function Organizer() {
                     </select>
                     <span className="rounded-full border border-border px-2 py-1 text-xs text-muted-foreground">
                         {collection.source === 'external'
-                            ? t('organizer.externalCollection', 'Selected external folder')
-                            : t('organizer.managedCollection', 'App-managed collection')}
+                            ? t('organizer.externalCollection')
+                            : t('organizer.managedCollection')}
                     </span>
-                    <span className="text-xs text-muted-foreground">{t('organizer.folderShortcut', 'PageUp / PageDown switches nearby folders')}</span>
+                    <span className="text-xs text-muted-foreground">{t('organizer.folderShortcut')}</span>
                 </div>
             </header>
 
             {/* Narrow screens scroll the two sections as one document; desktop constrains the grid and policy pane to independent scrollers. */}
             <div className="grid min-w-0 flex-none grid-cols-1 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.42fr)]">
-                <section className="flex min-h-[420px] min-w-0 flex-col border-b border-border lg:min-h-0 lg:border-b-0 lg:border-r" aria-label="Virtualized artifact browser">
+                <section className="flex min-h-[420px] min-w-0 flex-col border-b border-border lg:min-h-0 lg:border-b-0 lg:border-r" aria-label={t('organizer.virtualizedArtifactBrowserAria')}>
                     <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-2 sm:px-5">
-                        <p className="text-sm text-muted-foreground">{t('organizer.imageCount', '{{count}} images', { count: entries.length })}</p>
+                        <p className="text-sm text-muted-foreground">{t('organizer.imageCount', { count: entries.length })}</p>
                         <label className="flex min-h-11 items-center gap-2 text-xs">
-                            {t('organizer.gridSize', 'Grid size')}
+                            {t('organizer.gridSize')}
                             <input
                                 type="range"
                                 min="128"
                                 max="280"
                                 step="8"
                                 value={gridTileWidth}
-                                aria-label="Thumbnail grid size"
+                                aria-label={t('organizer.thumbnailGridSizeAria')}
                                 onChange={event => setGridTileWidth(Number(event.target.value))}
                             />
                             <span>{gridTileWidth}px</span>
@@ -529,11 +617,11 @@ export default function Organizer() {
                         className="min-h-[320px] min-w-0 flex-1 overflow-auto overscroll-contain p-3 sm:p-5"
                         onScroll={event => setScrollTop(event.currentTarget.scrollTop)}
                         role="grid"
-                        aria-label="Artifact thumbnail browser"
+                        aria-label={t('organizer.artifactThumbnailBrowserAria')}
                     >
                         {entries.length === 0 ? (
                             <div className="flex min-h-48 items-center justify-center text-center text-sm text-muted-foreground">
-                                {t('organizer.empty', 'No PNG, WebP, or JPEG images are in this collection.')}
+                                {t('organizer.empty')}
                             </div>
                         ) : (
                             <div className="relative" style={{ height: gridHeight }}>
@@ -550,7 +638,7 @@ export default function Organizer() {
                                             draggable
                                             role="gridcell"
                                             aria-selected={selected}
-                                            aria-label={`${entry.file.fileName}. Press Enter to assign the next empty slot.`}
+                                            aria-label={t('organizer.assignNextSlotAria', { fileName: entry.file.fileName })}
                                             data-testid="organizer-grid-item"
                                             data-organizer-index={index}
                                             onClick={() => setSelectedEntryId(entry.entryId)}
@@ -575,7 +663,7 @@ export default function Organizer() {
                                             }}
                                         >
                                             <span className="flex min-h-0 flex-1 items-center justify-center bg-muted/30">
-                                                {thumb ? <img src={thumb} alt={thumbnailAlt(entry)} className="h-full w-full object-cover" /> : <span className="text-xs text-muted-foreground">{t('organizer.loadingPreview', 'Loading preview…')}</span>}
+                                                {thumb ? <img src={thumb} alt={thumbnailAlt(t, entry)} className="h-full w-full object-cover" /> : <span className="text-xs text-muted-foreground">{t('organizer.loadingPreview')}</span>}
                                             </span>
                                             <span className="flex min-h-11 items-center gap-1 px-2 py-1">
                                                 <GripVertical className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -589,10 +677,10 @@ export default function Organizer() {
                     </div>
                 </section>
 
-                <aside className="overflow-visible lg:min-h-0 lg:overflow-y-auto" aria-label="Distribution policy and slots">
+                <aside className="overflow-visible lg:min-h-0 lg:overflow-y-auto" aria-label={t('organizer.distributionPolicyAndSlotsAria')}>
                     <section className="border-b border-border p-3 sm:p-5">
-                        <h2 className="font-semibold">{t('organizer.assignmentSlots', 'Selection slots')}</h2>
-                        <p className="mt-1 text-xs text-muted-foreground">{t('organizer.assignmentHelp', 'Press Enter for the next empty slot, or drag and drop an image into a slot.')}</p>
+                        <h2 className="font-semibold">{t('organizer.assignmentSlots')}</h2>
+                        <p className="mt-1 text-xs text-muted-foreground">{t('organizer.assignmentHelp')}</p>
                         <div className="mt-3 grid grid-cols-2 gap-2">
                             {slots.map(slot => {
                                 const record = slot.artifactId === null ? null : recordsById.get(slot.artifactId) ?? null
@@ -620,86 +708,86 @@ export default function Organizer() {
                                         }}
                                     >
                                         <span className="block font-medium">{slot.slotId}</span>
-                                        <span className="mt-1 block truncate text-muted-foreground">{filled ? record.original.file.fileName : t('organizer.slotEmpty', 'Drop or choose an image')}</span>
+                                        <span className="mt-1 block truncate text-muted-foreground">{filled ? record.original.file.fileName : t('organizer.slotEmpty')}</span>
                                     </button>
                                 )
                             })}
                         </div>
                         {assignedArtifactIds.size > 0 && (
                             <Button variant="ghost" size="sm" className="mt-2" onClick={() => setSlots(current => clearOrganizerAssignment(current, slots.find(slot => slot.artifactId !== null)?.slotId ?? ''))}>
-                                {t('organizer.clearSlot', 'Clear first assigned slot')}
+                                {t('organizer.clearSlot')}
                             </Button>
                         )}
                     </section>
 
                     <section className="space-y-3 p-3 sm:p-5">
                         <div>
-                            <h2 className="font-semibold">{t('organizer.exportSettings', 'Export settings')}</h2>
-                            <p className="mt-1 text-xs text-muted-foreground">{t('organizer.exportDescription', 'The selected collection is the destination. File names and conflicts are checked before a copy is created.')}</p>
+                            <h2 className="font-semibold">{t('organizer.exportSettings')}</h2>
+                            <p className="mt-1 text-xs text-muted-foreground">{t('organizer.exportDescription')}</p>
                         </div>
-                        <label className="block text-xs font-medium">{t('organizer.filenameTemplate', 'Filename template')}
+                        <label className="block text-xs font-medium">{t('organizer.filenameTemplate')}
                             <input value={policy.filenameTemplate} onChange={event => setPolicy(current => ({ ...current, filenameTemplate: event.target.value }))} className="mt-1 min-h-11 w-full rounded-control border border-input bg-background px-3 text-sm" />
                         </label>
                         <div className="rounded-control border border-border bg-muted/30 p-2 text-xs">
-                            <span className="font-medium">{t('organizer.filenamePreview', 'Filename preview')}: </span>{selectedPreview}
-                            <p className="mt-1 text-muted-foreground">{t('organizer.conflictPreview', 'Conflict check')}: {conflictPreview}</p>
-                            <p className="mt-1 text-muted-foreground">{t('organizer.operationPreview', 'Planned operation')}: {modePreview}</p>
+                            <span className="font-medium">{t('organizer.filenamePreview')}: </span>{selectedPreview}
+                            <p className="mt-1 text-muted-foreground">{t('organizer.conflictPreview')}: {conflictPreview}</p>
+                            <p className="mt-1 text-muted-foreground">{t('organizer.operationPreview')}: {modePreview}</p>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
-                            <label className="text-xs font-medium">Format
+                            <label className="text-xs font-medium">{t('organizer.format')}
                                 <select value={policy.format} onChange={event => setPolicy(current => ({ ...current, format: event.target.value as DistributionFormat }))} className="mt-1 min-h-11 w-full rounded-control border border-input bg-background px-2">
                                     <option value="png">PNG</option><option value="webp">WebP</option>
                                 </select>
                             </label>
-                            <label className="text-xs font-medium">Collision
+                            <label className="text-xs font-medium">{t('organizer.collision')}
                                 <select value={policy.collisionPolicy} onChange={event => setPolicy(current => ({ ...current, collisionPolicy: event.target.value as CollisionPolicy }))} className="mt-1 min-h-11 w-full rounded-control border border-input bg-background px-2">
-                                    <option value="unique">Unique suffix</option><option value="overwrite">Overwrite</option><option value="error">Stop on conflict</option>
+                                    <option value="unique">{t('organizer.collisionPolicyUnique')}</option><option value="overwrite">{t('organizer.collisionPolicyOverwrite')}</option><option value="error">{t('organizer.collisionPolicyError')}</option>
                                 </select>
                             </label>
                         </div>
-                        <label className="block text-xs font-medium">Quality {policy.quality}
+                        <label className="block text-xs font-medium">{t('organizer.quality')} {policy.quality}
                             <input type="range" min="1" max="100" value={policy.quality} onChange={event => setPolicy(current => ({ ...current, quality: Number(event.target.value) }))} className="mt-1 w-full" />
                         </label>
                         <div className="grid grid-cols-2 gap-2 text-xs">
-                            <label className="flex min-h-11 items-center gap-2 rounded-control border border-input px-2"><input type="checkbox" checked={policy.metadataPolicy === 'strip'} onChange={event => setPolicy(current => ({ ...current, metadataPolicy: event.target.checked ? 'strip' : 'preserve' }))} />Strip metadata</label>
-                            <label className="flex min-h-11 items-center gap-2 rounded-control border border-input px-2"><input type="checkbox" checked={policy.alphaPolicy === 'flatten'} onChange={event => setPolicy(current => ({ ...current, alphaPolicy: event.target.checked ? 'flatten' : 'preserve' }))} />Flatten alpha</label>
-                            <label className="flex min-h-11 items-center gap-2 rounded-control border border-input px-2"><input type="checkbox" checked={policy.webpLossless} disabled={policy.format !== 'webp'} onChange={event => setPolicy(current => ({ ...current, webpLossless: event.target.checked }))} />Lossless WebP</label>
-                            <label className="text-xs font-medium">Matte<input type="color" value={policy.matteColor} onChange={event => setPolicy(current => ({ ...current, matteColor: event.target.value }))} className="mt-1 block h-9 w-full" /></label>
+                            <label className="flex min-h-11 items-center gap-2 rounded-control border border-input px-2"><input type="checkbox" checked={policy.metadataPolicy === 'strip'} onChange={event => setPolicy(current => ({ ...current, metadataPolicy: event.target.checked ? 'strip' : 'preserve' }))} />{t('organizer.stripMetadata')}</label>
+                            <label className="flex min-h-11 items-center gap-2 rounded-control border border-input px-2"><input type="checkbox" checked={policy.alphaPolicy === 'flatten'} onChange={event => setPolicy(current => ({ ...current, alphaPolicy: event.target.checked ? 'flatten' : 'preserve' }))} />{t('organizer.flattenAlpha')}</label>
+                            <label className="flex min-h-11 items-center gap-2 rounded-control border border-input px-2"><input type="checkbox" checked={policy.webpLossless} disabled={policy.format !== 'webp'} onChange={event => setPolicy(current => ({ ...current, webpLossless: event.target.checked }))} />{t('organizer.losslessWebp')}</label>
+                            <label className="text-xs font-medium">{t('organizer.matte')}<input type="color" value={policy.matteColor} onChange={event => setPolicy(current => ({ ...current, matteColor: event.target.value }))} className="mt-1 block h-9 w-full" /></label>
                         </div>
-                        {policy.format === 'webp' && policy.webpLossless && <p className="rounded-control border border-warning/40 bg-warning/10 p-2 text-xs">This WebView cannot prove lossless WebP conversion. The task will fail safely; choose PNG or preserve an existing WebP.</p>}
-                        <label className="block text-xs font-medium">Optional R2 follow-up
+                        {policy.format === 'webp' && policy.webpLossless && <p className="rounded-control border border-warning/40 bg-warning/10 p-2 text-xs">{t('organizer.losslessWebpUnsupported')}</p>}
+                        <label className="block text-xs font-medium">{t('organizer.optionalR2FollowUp')}
                             <select value={policy.r2ProfileId} disabled={!r2Capability.supported} onChange={event => setPolicy(current => ({ ...current, r2ProfileId: event.target.value }))} className="mt-1 min-h-11 w-full rounded-control border border-input bg-background px-2 disabled:opacity-50">
-                                <option value="">Do not enqueue R2</option>
+                                <option value="">{t('organizer.doNotEnqueueR2')}</option>
                                 {profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
                             </select>
                         </label>
-                        {!r2Capability.supported && <p className="rounded-control border border-warning/40 bg-warning/10 p-2 text-xs">{r2Capability.reason ?? 'R2 follow-up is unavailable.'} {r2Capability.alternative ?? ''}</p>}
-                        {policy.r2ProfileId && <label className="block text-xs font-medium">R2 key prefix<input value={policy.r2Prefix} onChange={event => setPolicy(current => ({ ...current, r2Prefix: event.target.value }))} className="mt-1 min-h-11 w-full rounded-control border border-input bg-background px-3" /></label>}
-                        {remotePreview !== null && <p className="rounded-control border border-border bg-muted/30 p-2 text-xs"><span className="font-medium">R2 key preview: </span>{remotePreview}</p>}
+                        {!r2Capability.supported && <p className="rounded-control border border-warning/40 bg-warning/10 p-2 text-xs">{r2Capability.reason ?? t('organizer.r2FollowUpUnavailable')} {r2Capability.alternative ?? ''}</p>}
+                        {policy.r2ProfileId && <label className="block text-xs font-medium">{t('organizer.r2KeyPrefix')}<input value={policy.r2Prefix} onChange={event => setPolicy(current => ({ ...current, r2Prefix: event.target.value }))} className="mt-1 min-h-11 w-full rounded-control border border-input bg-background px-3" /></label>}
+                        {remotePreview !== null && <p className="rounded-control border border-border bg-muted/30 p-2 text-xs"><span className="font-medium">{t('organizer.r2KeyPreview')}: </span>{remotePreview}</p>}
                         <div className="flex flex-wrap gap-2">
                             <Button onClick={() => void runDistribution()} disabled={busy || selectedEntry === null} data-testid="organizer-run-distribution">
-                                <UploadCloud className="mr-2 h-4 w-4" />{t('organizer.createExport', 'Create export copy')}
+                                <UploadCloud className="mr-2 h-4 w-4" />{t('organizer.createExport')}
                             </Button>
                             <Button variant="outline" onClick={() => void retryFailed()} disabled={busy || failedCount === 0}>
-                                <RotateCcw className="mr-2 h-4 w-4" />{t('organizer.retryFailed', 'Retry failed')} ({failedCount})
+                                <RotateCcw className="mr-2 h-4 w-4" />{t('organizer.retryFailed')} ({failedCount})
                             </Button>
                         </div>
                         <div className="space-y-1">
-                            <div className="flex justify-between text-xs text-muted-foreground"><span>{t('organizer.progress', 'Export progress')}</span><span>{executionStage}</span></div>
-                            <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Organizer execution progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={executionProgress}>
+                            <div className="flex justify-between text-xs text-muted-foreground"><span>{t('organizer.progress')}</span><span>{executionStageLabel}</span></div>
+                            <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label={t('organizer.executionProgressAria')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={executionProgress}>
                                 <div className="h-full bg-primary transition-[width]" style={{ width: `${executionProgress}%` }} />
                             </div>
                         </div>
                         <p className="rounded-control border border-border p-2 text-xs text-muted-foreground" role="status">{status}</p>
                         <details className="rounded-control border border-border p-2 text-xs">
-                            <summary className="cursor-pointer font-medium">{t('organizer.diagnostics', 'Detailed diagnostics')} ({organizerDiagnostics.length})</summary>
-                            {organizerDiagnostics.length === 0 ? <p className="mt-2 text-muted-foreground">No organizer diagnostic has been recorded in this session.</p> : (
+                            <summary className="cursor-pointer font-medium">{t('organizer.diagnostics')} ({organizerDiagnostics.length})</summary>
+                            {organizerDiagnostics.length === 0 ? <p className="mt-2 text-muted-foreground">{t('organizer.noDiagnostics')}</p> : (
                                 <ul className="mt-2 space-y-1 text-muted-foreground">
                                     {organizerDiagnostics.map(event => <li key={event.eventId}><span className="font-mono">{event.code}</span> · {event.userSummary}</li>)}
                                 </ul>
                             )}
                         </details>
-                        {latestSelectedRecord !== null && <p className="text-xs text-muted-foreground">Artifact record connected: {latestSelectedRecord.artifactId}</p>}
+                        {latestSelectedRecord !== null && <p className="text-xs text-muted-foreground">{t('organizer.artifactRecordConnected', { artifactId: latestSelectedRecord.artifactId })}</p>}
                     </section>
                 </aside>
             </div>

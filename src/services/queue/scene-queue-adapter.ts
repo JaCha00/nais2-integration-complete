@@ -19,6 +19,11 @@ import { useSettingsStore } from '@/stores/settings-store'
 import type { QueueExecutorContext } from './durable-queue-coordinator'
 import { QueueExecutionError } from './durable-queue-coordinator'
 import {
+    registerQueueArtifact,
+    rollbackQueueArtifactRegistration,
+    type QueueArtifactRegistration,
+} from './queue-artifact-lineage'
+import {
     getRuntimeQueueRepository,
     type CreateBatchAndEnqueueResult,
     type EnqueueGenerationJobInput,
@@ -251,6 +256,7 @@ export async function executeSceneQueueJob(
     if (payload.sceneWorkflow.sequenceCommitProposal !== null && sequenceLease === null) {
         throw new QueueExecutionError('transient', 'Fragment sequence changed before durable reservation')
     }
+    let artifactRegistration: QueueArtifactRegistration | null = null
     try {
         const saved = await saveSceneResult(
             payload.sceneWorkflow.scene,
@@ -267,6 +273,20 @@ export async function executeSceneQueueJob(
                 outputTransactionId: transactionId,
                 outputContext: payload.sceneWorkflow.outputContext,
                 ...(sequenceLease === null ? {} : { beforeFinalize: () => sequenceLease.commit() }),
+                registerArtifact: async output => {
+                    artifactRegistration = await registerQueueArtifact(job, artifactReference, output)
+                    return artifactRegistration === null
+                        ? null
+                        : {
+                            artifactId: artifactRegistration.record.artifactId,
+                            sourceJobId: job.id,
+                            sourceSceneId: job.sceneId,
+                        }
+                },
+                rollbackArtifact: async () => {
+                    await rollbackQueueArtifactRegistration(artifactRegistration)
+                    artifactRegistration = null
+                },
                 commitDurable: () => context.commitOutput(transactionId, artifactReference),
             },
         )
