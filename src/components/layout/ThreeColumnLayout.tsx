@@ -73,7 +73,7 @@ function useMediaQuery(query: string) {
 export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
     const { t } = useTranslation()
     const location = useLocation()
-    const { anlas, isVerified, anlas2, isVerified2, slot2Enabled, refreshAnlas, setSlotEnabled, getActiveTokens } = useAuthStore()
+    const { anlas, isVerified, anlas2, isVerified2, slot2Enabled, refreshAnlas, setSlotEnabled, getActiveTokens, requestTokenEntry } = useAuthStore()
     const {
         leftSidebarVisible,
         rightSidebarVisible,
@@ -286,12 +286,16 @@ export function ThreeColumnLayout({ children }: ThreeColumnLayoutProps) {
                         )}
                     </div>
                 ) : (
-                    <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-control bg-muted px-3 py-2">
+                    <button
+                        type="button"
+                        onClick={requestTokenEntry}
+                        className="flex min-h-11 min-w-0 items-center gap-2 rounded-control bg-muted px-3 py-2 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
                         <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/50" aria-hidden="true" />
                         <span className="min-w-0 truncate text-sm text-muted-foreground">
                             {t('settingsPage.api.token')}
                         </span>
-                    </div>
+                    </button>
                 )}
             </div>
 
