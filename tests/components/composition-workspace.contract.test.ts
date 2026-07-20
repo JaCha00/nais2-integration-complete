@@ -178,6 +178,7 @@ describe('composition workspace source contracts', () => {
         expect(bar).toContain('data-testid="composition-command-bar"')
         expect(bar).toContain('data-testid="composition-open-modules"')
         expect(bar).toContain('data-testid="composition-open-inspector"')
+        expect(bar).toContain('h-11 min-w-11 max-w-full')
         expect(bar).not.toContain('2xl:hidden')
         expect(bar).toContain('generation.onCancel')
         expect(bar).toContain('generation.onGenerate')

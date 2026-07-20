@@ -97,13 +97,13 @@ function CommandSelect({
 }) {
     return (
         <label className={cn('grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2', className)}>
-            <span className="text-xs font-medium text-muted-foreground">{control.label ?? label}</span>
+            <span className="min-w-0 truncate text-xs font-medium text-muted-foreground">{control.label ?? label}</span>
             <Select
                 value={control.value}
                 onValueChange={control.onChange}
                 disabled={control.disabled}
             >
-                <SelectTrigger className="h-11 min-w-0 max-w-full rounded-control" aria-label={control.label ?? label}>
+                <SelectTrigger className="h-11 min-w-11 max-w-full rounded-control" aria-label={control.label ?? label}>
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="max-w-[min(32rem,calc(100vw-2rem))]">
