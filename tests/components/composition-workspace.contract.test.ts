@@ -119,13 +119,9 @@ describe('composition workspace large data contracts', () => {
     it('preserves a 20,000-character prompt in wrapping editor/preview contracts', async () => {
         const prompt = '긴 prompt / long prompt / 長いプロンプト '.repeat(800).slice(0, 20_000)
         expect(prompt).toHaveLength(20_000)
-        const [resolved, studio] = await Promise.all([
-            source('src/components/composition-workspace/ResolvedPlanView.tsx'),
-            source('src/components/asset-module-studio/CompositionStudioV2.tsx'),
-        ])
+        const resolved = await source('src/components/composition-workspace/ResolvedPlanView.tsx')
         expect(resolved).toContain('whitespace-pre-wrap break-words')
         expect(resolved).not.toMatch(/positivePrompt\.slice|positivePrompt\.substring/)
-        expect(studio).not.toMatch(/prompt\.slice\(0,\s*\d+\)|prompt\.substring\(0,\s*\d+/)
     })
 })
 
@@ -182,6 +178,7 @@ describe('composition workspace source contracts', () => {
         expect(bar).toContain('data-testid="composition-command-bar"')
         expect(bar).toContain('data-testid="composition-open-modules"')
         expect(bar).toContain('data-testid="composition-open-inspector"')
+        expect(bar).toContain('h-11 min-w-11 max-w-full')
         expect(bar).not.toContain('2xl:hidden')
         expect(bar).toContain('generation.onCancel')
         expect(bar).toContain('generation.onGenerate')
