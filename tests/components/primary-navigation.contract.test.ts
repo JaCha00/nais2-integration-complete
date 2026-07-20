@@ -31,7 +31,7 @@ describe('Primary navigation contract', () => {
         const navigation = await source('src/components/layout/AnimatedNavBar.tsx')
 
         expect(navigation).toContain("items.map(item => renderItem(item, 'activeTab-desktop', true))")
-        expect(navigation).toContain('min-[1800px]:flex')
+        expect(navigation).toContain('min-[2200px]:flex')
         expect(navigation).toContain('lg:hidden')
     })
 
